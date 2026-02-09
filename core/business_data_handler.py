@@ -104,4 +104,4 @@ def _should_update_half_year(last_update_str: NotionDate | None):
     now = datetime.now()
 
     # 判断是否已过下一个更新日期
-    return now > next_query_date
+    return now >= next_query_date
