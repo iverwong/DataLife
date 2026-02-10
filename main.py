@@ -23,9 +23,9 @@ async def main():
     stock_list = await get_stock_pool()
 
     # 处理主营构成数据
-    # from core.business_data_handler import process_business_data_for_stock_list
+    from core.business_data_handler import process_business_data_for_stock_list
 
-    # await process_business_data_for_stock_list(stock_list)
+    await process_business_data_for_stock_list(stock_list)
 
     # 处理巨潮公告
     from core.announcements_data_handler import (

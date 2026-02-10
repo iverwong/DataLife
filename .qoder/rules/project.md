@@ -99,15 +99,23 @@ handler 模块负责编排以上流程，main.py 负责初始化与调度入口�
 - 支持的块类型：标题、段落、表格、分隔线、Callout
 - 新增块类型时在 content_builder 中扩展，禁止在 handler 中直接拼装 JSON
 
+## 运行环境
+
+- **Python 虚拟环境**: 本项目使用 venv 虚拟环境管理依赖
+- **环境激活**: 所有 Python 命令执行前必须先激活虚拟环境
+  - PowerShell: `./venv/Scripts/Activate.ps1`
+  - 激活后终端提示符会显示 `(venv)` 前缀
+- **禁止**: 在未激活虚拟环境的情况下运行任何 Python 脚本或测试
+
 ## 环境变量
 
 以下环境变量必须配置，否则程序无法启动：
 
-| 变量名 | 说明 |
-|---|---|
-| `NOTION_TOKEN` | Notion Integration Token |
-| `STOCK_POOL` | 股票池数据源 ID |
-| `FLOW_DATABASE` | 资讯流数据库 ID |
+| 变量名          | 说明                     |
+| --------------- | ------------------------ |
+| `NOTION_TOKEN`  | Notion Integration Token |
+| `STOCK_POOL`    | 股票池数据源 ID          |
+| `FLOW_DATABASE` | 资讯流数据库 ID          |
 
 修改或新增环境变量时，同步更新本规则文件与 README。
 
