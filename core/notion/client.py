@@ -5,17 +5,17 @@ from aiolimiter import AsyncLimiter
 from notion_client import AsyncClient
 
 
-class AsyncRateLimitedTransport(httpx.BaseTransport):
+class AsyncRateLimitedTransport(httpx.AsyncHTTPTransport):
     def __init__(self, *, max_rate: float, time_period: float = 60.0, **kwargs):
-        self._transport = httpx.ASGITransport(**kwargs)
+        super().__init__(**kwargs)
         self._limiter = AsyncLimiter(max_rate=max_rate, time_period=time_period)
 
-    async def handle_request(self, request):
+    async def handle_async_request(self, request):
         async with self._limiter:
-            return await self._transport.handle_request(request)
+            return await super().handle_async_request(request)
 
-    async def close(self):
-        await self._transport.close()
+    async def aclose(self):
+        await super().aclose()
 
 
 httpx_client = httpx.AsyncClient(
