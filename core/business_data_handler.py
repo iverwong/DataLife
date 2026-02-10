@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 
 from .data import get_business
-from .db import get_update_time, set_update_time
+from .db import check_hash, get_update_time, save_hash, set_update_time
 from .models import NotionDate
 from .notion import (
     NotionContentBuilder,
@@ -45,6 +45,18 @@ async def process_business_data_for_stock_list(stock_list: list[StockPool]) -> N
         content = NotionContentBuilder()
         business_data = await get_business(stock)
 
+        # 构建去重内容
+        hash_content = {
+            "data_type": "business",
+            "content": f"{stock}-{business_data.report_date}-主营构成",
+        }
+
+        # 检查是否已存在
+        filtered = await check_hash([hash_content])
+        if not filtered:
+            logger.info(f"股票 {stock} 主营构成数据已存在，跳过创建")
+            continue
+
         content.add_heading("按行业分类", level=3)
         content.add_table_from_dataframe(business_data.industry_df)
         content.add_heading("按产品分类", level=3)
@@ -59,6 +71,9 @@ async def process_business_data_for_stock_list(stock_list: list[StockPool]) -> N
             relation=id,
             content=content.build(),
         )
+
+        # 保存 hash
+        await save_hash(filtered)
 
         await set_update_time(
             stock,

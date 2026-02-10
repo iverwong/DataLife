@@ -5,10 +5,11 @@ from datetime import date
 from dateutil.relativedelta import relativedelta
 
 from .data import get_announcements, split_pdf
-from .db import get_update_time
+from .db import check_hash, get_update_time, save_hash, set_update_time
 from .notion import (
     FileUpload,
     StockPool,
+    cover_datetime_to_notion_date,
     cover_notion_date_to_datetime,
     create_dataflow_page,
     upload_files_with_local,
@@ -62,6 +63,35 @@ async def process_announcements_data_for_stock_list(
     announcements_nested = await asyncio.gather(*tasks)
     announcements = [item for sublist in announcements_nested for item in sublist]
 
+    # 构建去重内容列表，保留原始索引
+    hash_contents = [
+        {
+            "data_type": "announcements",
+            "content": f"{ann.stock}-{ann.id}-{ann.title}",
+        }
+        for ann in announcements
+    ]
+
+    # 检查 hash 去重
+    filtered_hash_contents = await check_hash(hash_contents)
+
+    # 获取需要去重的公告索引
+    filtered_hashes = {item["hash"] for item in filtered_hash_contents}
+
+    # 同时过滤 announcements 和 hash_contents，保持对应关系
+    filtered_announcements = []
+    filtered_hash_list = []
+    for ann, hc in zip(announcements, hash_contents):
+        if hc["hash"] in filtered_hashes:
+            filtered_announcements.append(ann)
+            filtered_hash_list.append(hc)
+
+    announcements = filtered_announcements
+    filtered_hash_contents = filtered_hash_list
+
+    if not announcements:
+        return
+
     # 上传附件
     file_uploads = [
         FileUpload(url=announcement.url, title=announcement.title)
@@ -113,3 +143,14 @@ async def process_announcements_data_for_stock_list(
         )
 
     await asyncio.gather(*create_tasks)
+
+    # 保存 hash
+    await save_hash(filtered_hash_contents)
+
+    # 更新每只股票的最后更新时间
+    for stock_code in set(ann.stock for ann in announcements):
+        await set_update_time(
+            stock_code,
+            "announcements",
+            update_time=cover_datetime_to_notion_date(today),
+        )
