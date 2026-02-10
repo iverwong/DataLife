@@ -35,7 +35,7 @@ async def create_dataflow_page(
     attachment_id: str | None = None,
     source_url: str | None = None,
     content: list[dict] | None = None,
-) -> None:
+) -> bool:
     logger.debug(
         f"创建页面：入参：{title}, {published_date}, {source_api}, {data_type}, {relation}, {attachment_id}, {source_url}, {content}"
     )
@@ -48,6 +48,7 @@ async def create_dataflow_page(
     :param attachment_url: 附件链接
     :param source_url: 原文链接
     :param content: 正文内容
+    :return: 创建成功返回 True，失败返回 False
     """
     properties = {
         "标题": {"title": [{"text": {"content": title}}]},
@@ -70,5 +71,7 @@ async def create_dataflow_page(
             create_params["children"] = content
 
         await notion.pages.create(**create_params)
+        return True
     except Exception as e:
-        logger.error(f"创建页面失败: {e}")
+        logger.error(f"创建页面失败: 标题={title}, 错误={e}")
+        return False

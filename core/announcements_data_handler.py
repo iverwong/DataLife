@@ -155,10 +155,22 @@ async def process_announcements_data_for_stock_list(
             )
         )
 
-    await asyncio.gather(*create_tasks)
+    # 收集创建结果
+    create_results = await asyncio.gather(*create_tasks)
 
-    # 保存 hash
-    await save_hash(filtered_hash_contents)
+    # 只保存创建成功的 hash
+    success_hash_contents = [
+        filtered_hash_contents[i] for i, success in enumerate(create_results) if success
+    ]
+
+    if success_hash_contents:
+        await save_hash(success_hash_contents)
+        logger.info(f"成功创建 {len(success_hash_contents)} 条公告页面")
+
+    # 统计失败数量
+    failed_count = len(create_results) - len(success_hash_contents)
+    if failed_count > 0:
+        logger.error(f"创建失败 {failed_count} 条公告页面")
 
     # 更新每只股票的最后更新时间
     for stock_code in set(ann.stock for ann in announcements):
