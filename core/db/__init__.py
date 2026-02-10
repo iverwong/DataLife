@@ -104,6 +104,10 @@ async def check_hash(data_list: list[HashContent]) -> list[HashContent]:
     返回:
         list: 过滤后的数据列表，仅包含哈希值未在数据库中存在的数据项。
     """
+    # 如果数据列表为空，直接返回空列表
+    if not data_list:
+        return []
+
     # 计算所有Hash
     data_with_hash = []
     for item in data_list:

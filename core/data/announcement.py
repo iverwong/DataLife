@@ -80,23 +80,31 @@ async def get_announcements(
         res = await client.post(url, params=payload)
         response = res.json()
 
-        announcements = [*response["announcements"]]
+        # 处理 announcements 为 None 的情况
+        announcements_data = response.get("announcements") or []
+        announcements = [*announcements_data]
+        logger.info(
+            f"API 返回 announcements 数量: {len(announcements)}, totalpages: {response.get('totalpages', 0)}"
+        )
 
         # 使用接口返回的totalpages参数获取**剩余**页数
-        page_count = response["totalpages"]
+        page_count = response.get("totalpages", 0)
 
         for i in range(page_count):
             payload["pageNum"] = str(i + 2)
             res = await client.post(url, params=payload)
             response = res.json()
-            announcements.extend(response["announcements"])
+            page_announcements = response.get("announcements") or []
+            announcements.extend(page_announcements)
 
     # 将report中的摘要、英文版、图文版之类的筛选掉
+    before_filter_count = len(announcements)
     announcements = [
         each
         for each in announcements
-        if each["announcementTitle"] not in ["摘要", "英文版", "图文版"]
+        if each["announcementTitle"] not in ["摘要", "英文", "图文版"]
     ]
+    logger.info(f"过滤前: {before_filter_count}, 过滤后: {len(announcements)}")
 
     result = [
         Announcement(

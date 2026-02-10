@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from collections import defaultdict
 from datetime import date
 
@@ -15,6 +16,8 @@ from .notion import (
     upload_files_with_local,
     upload_files_with_url,
 )
+
+logger = logging.getLogger(__name__)
 
 SPLIT_KEYWORDS = ["年度报告", "年报", "中期"]
 
@@ -35,7 +38,7 @@ async def process_announcements_data_for_stock_list(
     # 对于更新时间为空的股票，默认从一年前开始
     init_update_stocks = [key for key, value in update_times.items() if value is None]
 
-    start_date = today - relativedelta(years=1)
+    start_date = today - relativedelta(months=3)  # FIX 测试
     end_date = today + relativedelta(days=1)
 
     tasks = [
@@ -62,6 +65,11 @@ async def process_announcements_data_for_stock_list(
     # 执行获取公告信息tasks
     announcements_nested = await asyncio.gather(*tasks)
     announcements = [item for sublist in announcements_nested for item in sublist]
+
+    # 如果没有获取到任何公告，直接返回
+    if not announcements:
+        logger.info("没有获取到任何公告，跳过处理")
+        return
 
     # 构建去重内容列表
     hash_contents = [
@@ -138,7 +146,7 @@ async def process_announcements_data_for_stock_list(
                     title=announcements[i].title,
                     published_date=announcements[i].published_date,
                     source_api=f"{get_announcements.__module__}.{get_announcements.__name__}",
-                    data_type="公告",
+                    data_type="公告披露",
                     relation=stocks_dict[announcements[i].stock],
                     attachment_id=uploaded[i].get("file_id"),
                     source_url=announcements[i].url,

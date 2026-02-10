@@ -5,6 +5,7 @@
 import logging
 import os
 from datetime import date, datetime
+from typing import Literal
 
 from . import notion
 from .datetime_helper import cover_datetime_to_notion_date
@@ -22,11 +23,14 @@ TYPE_MAPPING = {
 FLOW_DATABASE = os.getenv("FLOW_DATABASE")
 
 
+DataType = Literal["新闻资讯", "公告披露", "财务数据", "研究报告", "主营构成"]
+
+
 async def create_dataflow_page(
     title: str,
     published_date: datetime | date,
     source_api: str,
-    data_type: str,
+    data_type: DataType,
     relation: str,
     attachment_id: str | None = None,
     source_url: str | None = None,
@@ -57,10 +61,14 @@ async def create_dataflow_page(
     if attachment_id:
         properties["附件"] = {"files": [{"file_upload": {"id": attachment_id}}]}
     try:
-        await notion.pages.create(
-            parent={"data_source_id": FLOW_DATABASE},
-            properties=properties,
-            children=content,
-        )
+        # 构建 create 参数，只在 content 不为 None 时传递 children
+        create_params = {
+            "parent": {"data_source_id": FLOW_DATABASE},
+            "properties": properties,
+        }
+        if content is not None:
+            create_params["children"] = content
+
+        await notion.pages.create(**create_params)
     except Exception as e:
         logger.error(f"创建页面失败: {e}")

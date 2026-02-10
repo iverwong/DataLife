@@ -14,6 +14,8 @@ from core.notion import get_stock_pool
 
 # 初始化日志
 logging.basicConfig(level=logging.DEBUG)
+logging.getLogger("httpx").setLevel(logging.INFO)
+logging.getLogger("httpcore").setLevel(logging.INFO)
 logger = logging.getLogger(__name__)
 
 
