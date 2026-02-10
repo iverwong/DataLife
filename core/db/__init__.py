@@ -42,7 +42,7 @@ async def get_conn():
         - 如果在使用过程中发生异常，事务会自动回滚。
         - 无论是否发生异常，连接都会在最后被关闭。
     """
-    conn = db or _get_db()
+    conn = db or await _get_db()
     try:
         yield conn
         await conn.commit()
@@ -51,11 +51,11 @@ async def get_conn():
         raise
 
 
-def _get_db():
+async def _get_db():
     global db
     if db:
         return db
-    db = aiosqlite.connect(db_path)
+    db = await aiosqlite.connect(db_path)
     return db
 
 
@@ -73,7 +73,7 @@ async def init_db():
     返回值:
         无
     """
-    conn = _get_db()
+    conn = await _get_db()
     await conn.execute("""
             CREATE TABLE IF NOT EXISTS update_records (
                 stock TEXT NOT NULL,

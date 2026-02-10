@@ -114,8 +114,12 @@ async def process_announcements_data_for_stock_list(
 
     # 分割附件
     splited = split_pdf(file_need_split)
-    # 分割后的公告已经包含了完整的FileUpload信息，直接使用
-    internal_task = asyncio.create_task(upload_files_with_local(splited))
+    # 将分割后的 Announcement 对象转换为 FileUpload 格式
+    splited_file_uploads = [
+        FileUpload(url=announcement.url, title=announcement.title)
+        for announcement in splited
+    ]
+    internal_task = asyncio.create_task(upload_files_with_local(splited_file_uploads))
 
     # 上传至Notion
     external_uploaded, internal_uploaded = await asyncio.gather(
