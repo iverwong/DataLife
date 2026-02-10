@@ -99,10 +99,11 @@ async def get_announcements(
 
     # 将report中的摘要、英文版、图文版之类的筛选掉
     before_filter_count = len(announcements)
+    filtered_keywords = ["摘要", "英文", "图文版"]
     announcements = [
         each
         for each in announcements
-        if each["announcementTitle"] not in ["摘要", "英文", "图文版"]
+        if not any(kw in each["announcementTitle"] for kw in filtered_keywords)
     ]
     logger.info(f"过滤前: {before_filter_count}, 过滤后: {len(announcements)}")
 

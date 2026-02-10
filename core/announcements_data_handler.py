@@ -38,7 +38,7 @@ async def process_announcements_data_for_stock_list(
     # 对于更新时间为空的股票，默认从一年前开始
     init_update_stocks = [key for key, value in update_times.items() if value is None]
 
-    start_date = today - relativedelta(months=3)  # FIX 测试
+    start_date = today - relativedelta(years=1)
     end_date = today + relativedelta(days=1)
 
     tasks = [
