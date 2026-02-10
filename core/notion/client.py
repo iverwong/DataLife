@@ -39,7 +39,9 @@ httpx_client = httpx.AsyncClient(
     transport=AsyncRateLimitedTransport(
         max_rate=3,  # 每秒3个请求
         time_period=1.0,  # 时间窗口1秒
-    )
+    ),
+    timeout=httpx.Timeout(30.0, connect=10.0),  # 总超时30秒，连接超时10秒
+    follow_redirects=True,
 )
 
 notion = AsyncClient(client=httpx_client, auth=os.getenv("NOTION_TOKEN"))

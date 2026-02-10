@@ -9,6 +9,7 @@ from typing import Literal
 
 from . import notion
 from .datetime_helper import cover_datetime_to_notion_date
+from .retry_helper import with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ FLOW_DATABASE = os.getenv("FLOW_DATABASE")
 DataType = Literal["新闻资讯", "公告披露", "财务数据", "研究报告", "主营构成"]
 
 
+@with_retry()
 async def create_dataflow_page(
     title: str,
     published_date: datetime | date,

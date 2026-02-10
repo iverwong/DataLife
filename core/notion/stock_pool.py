@@ -3,6 +3,7 @@ import os
 from typing import NamedTuple
 
 from . import notion
+from .retry_helper import with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,7 @@ class StockPool(NamedTuple):
     code: str
 
 
+@with_retry()
 async def get_stock_pool() -> list[StockPool]:
     """
     异步函数：从Notion数据源获取股票池信息并返回StockPool对象列表。
