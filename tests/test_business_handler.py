@@ -1,7 +1,21 @@
-from datetime import datetime
-from unittest.mock import patch
+import sys
+from datetime import date, datetime
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
-from core.business_data_handler import _should_update_half_year
+import aiosqlite
+import pytest
+import pytest_asyncio
+
+# 添加项目根目录到路径
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from core.business_data_handler import (
+    _should_update_half_year,
+    process_business_data_for_stock_list,
+)
+from core.notion import StockPool
+from tests.resource.manager import resource_manager
 
 
 def _patch_datetime(now_value):
@@ -80,3 +94,210 @@ class TestShouldUpdateHalfYear:
             assert _should_update_half_year("2025-06-30T12:00:00.000+08:00") is True
         finally:
             p.stop()
+
+
+@pytest_asyncio.fixture(scope="function")
+async def memory_db():
+    """创建内存数据库用于测试"""
+    # 创建内存数据库连接
+    conn = await aiosqlite.connect(":memory:")
+
+    # 创建所需的表结构
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS update_records (
+            stock TEXT NOT NULL,
+            key TEXT NOT NULL,
+            update_time TEXT,
+            PRIMARY KEY (stock, key)
+        )
+    """)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS hash (
+            hash TEXT PRIMARY KEY,
+            create_at TEXT NOT NULL
+        )
+    """)
+    await conn.commit()
+
+    # 注入到 db 模块中
+    import core.db
+
+    original_db = core.db.db
+    core.db.db = conn
+
+    yield conn
+
+    # 恢复原始连接
+    core.db.db = original_db
+    await conn.close()
+
+
+@pytest.mark.asyncio
+class TestProcessBusinessData:
+    """测试 process_business_data_for_stock_list 完整流程"""
+
+    async def test_process_new_stock_creates_page(self, memory_db):
+        """测试处理新股票（无更新记录）时创建页面"""
+        # 准备测试数据 - 使用静态资源
+        resource = resource_manager.load("ygdq_300274_business")
+        business_df = resource.get_data()
+
+        # 创建股票池对象
+        stock_list = [StockPool(id="test-page-id-123", code="300274")]
+
+        # 只 Mock 外部依赖（数据获取和 Notion API），数据库使用真实内存数据库
+        with (
+            patch("core.business_data_handler.get_business") as mock_get_business,
+            patch(
+                "core.business_data_handler.create_dataflow_page"
+            ) as mock_create_page,
+        ):
+            # 设置 mock 返回值
+            mock_get_business.return_value = MagicMock(
+                report_date=date(2025, 6, 30),
+                industry_df=business_df[business_df["分类类型"].isna()].head(5),
+                product_df=business_df[business_df["分类类型"] == "按产品分类"].head(5),
+                region_df=business_df[business_df["分类类型"] == "按地区分类"].head(5),
+            )
+            mock_create_page.return_value = None
+
+            # 执行测试
+            await process_business_data_for_stock_list(stock_list)
+
+            # 验证外部调用
+            mock_create_page.assert_called_once()
+
+            # 验证数据库状态
+            cursor = await memory_db.execute(
+                "SELECT update_time FROM update_records WHERE stock = ? AND key = ?",
+                ("300274", "business"),
+            )
+            result = await cursor.fetchone()
+            assert result is not None
+            assert result[0] == "2025-06-30"
+
+            # 验证 hash 已保存
+            cursor = await memory_db.execute("SELECT COUNT(*) FROM hash")
+            count = await cursor.fetchone()
+            assert count[0] > 0
+
+    async def test_process_existing_stock_skips_update(self, memory_db):
+        """测试已更新的股票跳过处理"""
+        stock_list = [StockPool(id="test-page-id-123", code="300274")]
+
+        # 在数据库中插入已更新记录
+        await memory_db.execute(
+            "INSERT INTO update_records (stock, key, update_time) VALUES (?, ?, ?)",
+            ("300274", "business", "2024-12-31"),
+        )
+        await memory_db.commit()
+
+        # Mock 当前时间为 2025-06-15（在更新周期内）
+        with (
+            patch(
+                "core.business_data_handler._should_update_half_year"
+            ) as mock_should_update,
+            patch("core.business_data_handler.get_business") as mock_get_business,
+        ):
+            mock_should_update.return_value = False  # 不需要更新
+
+            # 执行测试
+            await process_business_data_for_stock_list(stock_list)
+
+            # 验证：不应获取业务数据
+            mock_get_business.assert_not_called()
+
+            # 验证数据库状态未改变
+            cursor = await memory_db.execute(
+                "SELECT update_time FROM update_records WHERE stock = ? AND key = ?",
+                ("300274", "business"),
+            )
+            result = await cursor.fetchone()
+            assert result[0] == "2024-12-31"
+
+    async def test_duplicate_hash_skips_creation(self, memory_db):
+        """测试重复 hash 跳过页面创建"""
+        resource = resource_manager.load("ygdq_300274_business")
+        business_df = resource.get_data()
+
+        stock_list = [StockPool(id="test-page-id-123", code="300274")]
+
+        # 先执行一次完整流程，将 hash 保存到数据库
+        with (
+            patch("core.business_data_handler.get_business") as mock_get_business,
+            patch(
+                "core.business_data_handler.create_dataflow_page"
+            ) as mock_create_page,
+        ):
+            mock_get_business.return_value = MagicMock(
+                report_date=date(2025, 6, 30),
+                industry_df=business_df[business_df["分类类型"].isna()].head(5),
+                product_df=business_df[business_df["分类类型"] == "按产品分类"].head(5),
+                region_df=business_df[business_df["分类类型"] == "按地区分类"].head(5),
+            )
+
+            await process_business_data_for_stock_list(stock_list)
+            first_call_count = mock_create_page.call_count
+            assert first_call_count == 1
+
+        # 第二次执行，应该因为 hash 重复而跳过
+        with (
+            patch("core.business_data_handler.get_business") as mock_get_business2,
+            patch(
+                "core.business_data_handler.create_dataflow_page"
+            ) as mock_create_page2,
+        ):
+            mock_get_business2.return_value = MagicMock(
+                report_date=date(2025, 6, 30),
+                industry_df=business_df[business_df["分类类型"].isna()].head(5),
+                product_df=business_df[business_df["分类类型"] == "按产品分类"].head(5),
+                region_df=business_df[business_df["分类类型"] == "按地区分类"].head(5),
+            )
+
+            await process_business_data_for_stock_list(stock_list)
+
+            # 验证：不应创建页面
+            mock_create_page2.assert_not_called()
+
+    async def test_process_multiple_stocks(self, memory_db):
+        """测试处理多只股票"""
+        stock_list = [
+            StockPool(id="test-id-1", code="300274"),
+            StockPool(id="test-id-2", code="300750"),
+        ]
+
+        with (
+            patch("core.business_data_handler.get_business") as mock_get_business,
+            patch(
+                "core.business_data_handler.create_dataflow_page"
+            ) as mock_create_page,
+        ):
+            # 模拟返回不同股票的数据
+            async def mock_business_side_effect(stock_code):
+                return MagicMock(
+                    report_date=date(2025, 6, 30),
+                    industry_df=MagicMock(),
+                    product_df=MagicMock(),
+                    region_df=MagicMock(),
+                )
+
+            mock_get_business.side_effect = mock_business_side_effect
+
+            await process_business_data_for_stock_list(stock_list)
+
+            # 验证：应为每只股票创建页面
+            assert mock_create_page.call_count == 2
+            mock_get_business.assert_any_call("300274")
+            mock_get_business.assert_any_call("300750")
+
+            # 验证数据库中两只股票的记录都已创建
+            cursor = await memory_db.execute(
+                "SELECT stock, update_time FROM update_records WHERE key = ? ORDER BY stock",
+                ("business",),
+            )
+            results = await cursor.fetchall()
+            assert len(results) == 2
+            assert results[0][0] == "300274"
+            assert results[0][1] == "2025-06-30"
+            assert results[1][0] == "300750"
+            assert results[1][1] == "2025-06-30"

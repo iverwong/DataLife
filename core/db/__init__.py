@@ -94,7 +94,7 @@ async def init_db():
     await conn.commit()
 
 
-async def check_hash(data_list: list[HashContent]):
+async def check_hash(data_list: list[HashContent]) -> list[HashContent]:
     """
     检查数据列表中的哈希值是否已存在于数据库中，并返回未存在的数据项。
 
@@ -128,7 +128,7 @@ async def check_hash(data_list: list[HashContent]):
     return filtered_data
 
 
-async def save_hash(data_list: list[HashContent]):
+async def save_hash(data_list: list[HashContent]) -> None:
     """
     将哈希数据批量保存到数据库中。
 
@@ -175,7 +175,7 @@ async def get_update_time(stocks: list[str], key: KEYS) -> dict[str, NotionDate 
         missing_stocks = [stock for stock in stocks if stock not in result_dict]
 
         if missing_stocks:
-            conn.executemany(
+            await conn.executemany(
                 "INSERT INTO update_records (stock, key, update_time) VALUES (?, ?, NULL)",
                 tuple((stock, key) for stock in missing_stocks),
             )

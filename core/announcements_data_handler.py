@@ -63,7 +63,7 @@ async def process_announcements_data_for_stock_list(
     announcements_nested = await asyncio.gather(*tasks)
     announcements = [item for sublist in announcements_nested for item in sublist]
 
-    # 构建去重内容列表，保留原始索引
+    # 构建去重内容列表
     hash_contents = [
         {
             "data_type": "announcements",
@@ -73,24 +73,25 @@ async def process_announcements_data_for_stock_list(
     ]
 
     # 检查 hash 去重
+    # check_hash 会返回新列表，包含 hash 字段，仅包含未存在的元素
     filtered_hash_contents = await check_hash(hash_contents)
 
-    # 获取需要去重的公告索引
-    filtered_hashes = {item["hash"] for item in filtered_hash_contents}
-
-    # 同时过滤 announcements 和 hash_contents，保持对应关系
-    filtered_announcements = []
-    filtered_hash_list = []
-    for ann, hc in zip(announcements, hash_contents):
-        if hc["hash"] in filtered_hashes:
-            filtered_announcements.append(ann)
-            filtered_hash_list.append(hc)
-
-    announcements = filtered_announcements
-    filtered_hash_contents = filtered_hash_list
-
-    if not announcements:
+    # 如果所有公告都已存在，直接返回
+    if not filtered_hash_contents:
         return
+
+    # 构建需要保留的 content 集合（用 content 而不是 hash 来匹配）
+    filtered_contents = {item["content"] for item in filtered_hash_contents}
+
+    # 过滤公告列表：只保留 content 在 filtered_contents 中的公告
+    filtered_announcements = [
+        ann
+        for ann, hc in zip(announcements, hash_contents)
+        if hc["content"] in filtered_contents
+    ]
+
+    # 更新变量指向
+    announcements = filtered_announcements
 
     # 上传附件
     file_uploads = [

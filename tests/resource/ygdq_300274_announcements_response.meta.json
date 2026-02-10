@@ -1,0 +1,14 @@
+{
+  "name": "ygdq_300274_announcements_response",
+  "resource_type": "JSON",
+  "version": "1.0.0",
+  "created_at": "2026-02-10T11:50:48.390433",
+  "description": "阳光电源(300274)公告API原始响应",
+  "source": "cninfo.com.cn/new/hisAnnouncement/query",
+  "tags": [
+    "cninfo",
+    "api_response",
+    "300274",
+    "mock"
+  ]
+}
