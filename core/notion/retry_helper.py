@@ -69,7 +69,7 @@ def with_retry(
                     return await func(*args, **kwargs)
                 except retryable_exceptions as e:
                     last_exception = e
-                    logger.exception(f"[重试] {func.__name__} 遇到网络错误")
+                    logger.warning(f"[重试] {func.__name__} 遇到网络错误")
                     if attempt >= max_retries:
                         logger.error(
                             f"[重试] {func.__name__} 已达到最大重试次数 ({max_retries})，放弃重试"
