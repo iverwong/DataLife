@@ -61,10 +61,6 @@ async def _upload_internal_and_wait(
         file_id,
         file=(file_info["title"] + ".PDF", file_info["content"], "application/pdf"),
     )
-    try:
-        send_result.raise_for_status()
-    except Exception:
-        task_logger.exception(f"上传文件 {file_info['title']} 失败")
 
     if send_result["status"] == "uploaded":
         file_successed = True
@@ -127,13 +123,11 @@ async def _upload_external_and_wait(file_info: FileUpload) -> FileUploaded:
 
     # 返回结果
     if poll_result["status"] == "uploaded":
-        task_logger.info(f"✓ {file_info['title']} 上传成功")
+        task_logger.success(f"✓ {file_info['title']} 上传成功")
         return FileUploaded(**file_info, file_id=file_id, successed=True, error=None)
     else:
         error_msg = poll_result.get("file_import_result", {}).get("error", "未知错误")
-        task_logger.error(
-            f"✗ {file_info['title']} 上传失败: {error_msg}", error_msg=error_msg
-        )
+        task_logger.error(f"✗ {file_info['title']} 上传失败: {error_msg}")
         return FileUploaded(
             **file_info, file_id=file_id, successed=False, error=error_msg
         )
