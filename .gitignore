@@ -23,6 +23,9 @@ wheels/
 # pytest
 .pytest_cache/
 
+# logs
+/logs/
+
 # Virtual Environment
 venv/
 env/
