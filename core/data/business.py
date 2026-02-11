@@ -3,14 +3,12 @@
 """
 
 import asyncio
-import logging
 from datetime import date
 from typing import NamedTuple
 
 import akshare as ak
+from loguru import logger
 from pandas import DataFrame
-
-logger = logging.getLogger(__name__)
 
 
 class BusinessData(NamedTuple):
@@ -40,14 +38,16 @@ async def get_business(stock_code: str) -> BusinessData:
     返回:
         BusinessData: 包含主营业务构成数据的对象，包括报告日期、分行业数据、分产品数据和分地区数据。
     """
-    logger.info(f"获取股票{stock_code}的主营业务构成数据")
+    stock_logger = logger.bind(stock_code=stock_code)
     # 根据股票代码确定请求参数
     code = (
         f"SZ{stock_code}"
         if stock_code[0] == "0" or stock_code[0] == "3"
         else f"SH{stock_code}"
     )
+    stock_logger.info("获取股票{}的主营业务构成数据", stock_code)
     df = await asyncio.to_thread(ak.stock_zygc_em, code)
+    stock_logger.success("获取股票{}的主营业务构成数据成功", stock_code)
     report_date = df["报告日期"].max()
     # 分行业
     industry_df = df.loc[

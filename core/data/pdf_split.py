@@ -1,18 +1,16 @@
-import logging
 from io import BytesIO
 
 import httpx
 import pymupdf
+from loguru import logger
 
-from .announcement import Announcement
-
-logger = logging.getLogger(__name__)
+from .announcement import Announcement, AnnouncementWithContent
 
 CHUNK_SIZE = 95
 REP_SIZE = 5
 
 
-def split_pdf(announcement_list: list[Announcement]) -> list[Announcement]:
+def split_pdf(announcement_list: list[Announcement]) -> list[AnnouncementWithContent]:
     """
     将公告列表中的PDF文件进行分割处理。
 
@@ -23,31 +21,38 @@ def split_pdf(announcement_list: list[Announcement]) -> list[Announcement]:
         list[Announcement]: 分割后的公告列表，包含原始公告和新生成的分割公告
     """
     result = []
+    task_logger = logger.bind(announcement_list=announcement_list)
 
     for announcement in announcement_list:
-        logger.info(f"开始处理PDF: {announcement.title}")
+        subtask_logger = task_logger.bind(announcement=announcement)
+        subtask_logger.info(f"开始分割PDF: {announcement.title}")
 
         try:
             # 下载PDF文件
             pdf_content = _download_pdf(announcement.url)
             page_count = _get_pdf_page_count(pdf_content)
+            subtask_logger.info(f"PDF页数: {page_count}")
 
             # 如果页数较少，作为一个整体处理
             if page_count <= CHUNK_SIZE:
                 # 直接创建一个公告对象，添加页码信息
                 new_title = f"{announcement.title}(P1-P{page_count})"
-                new_announcement = Announcement(
+                new_announcement = AnnouncementWithContent(
                     id=f"{announcement.id}_part1",
                     stock=announcement.stock,
                     title=new_title,
                     size=announcement.size,  # 保持原始大小
                     url=announcement.url,
                     published_date=announcement.published_date,
+                    content=pdf_content,
                 )
+                subtask_logger.success(f"PDF分割完成: {announcement.title}")
                 result.append(new_announcement)
             else:
                 # 分割PDF
+                subtask_logger.info(f"开始分割PDF: {announcement.title}")
                 split_contents = _split_pdf_content(pdf_content)
+                subtask_logger.success(f"PDF分割完成: {announcement.title}")
 
                 # 为每个分割部分创建新的公告对象
                 for i, content in enumerate(split_contents):
@@ -55,18 +60,20 @@ def split_pdf(announcement_list: list[Announcement]) -> list[Announcement]:
                     end_page = min(start_page + CHUNK_SIZE - 1, page_count)
 
                     new_title = f"{announcement.title}(P{start_page}-P{end_page})"
-                    new_announcement = Announcement(
+                    new_announcement = AnnouncementWithContent(
                         id=f"{announcement.id}_part{i + 1}",
                         stock=announcement.stock,
                         title=new_title,
                         size=len(content) // 1024,  # 估算大小(KB)
                         url=announcement.url,
                         published_date=announcement.published_date,
+                        content=content,
                     )
+                    subtask_logger.success(f"PDF分割完成: {announcement.title}")
                     result.append(new_announcement)
 
-        except Exception as e:
-            logger.error(f"分割PDF失败 {announcement.title}: {e}")
+        except Exception:
+            subtask_logger.exception(f"分割PDF失败 {announcement.title}")
             # 分割失败时保留原始公告
             result.append(announcement)
 
@@ -75,9 +82,16 @@ def split_pdf(announcement_list: list[Announcement]) -> list[Announcement]:
 
 def _download_pdf(url: str) -> bytes:
     """下载PDF文件内容"""
+    task_logger = logger.bind(url=url)
+    task_logger.info(f"开始下载PDF文件: {url}")
     with httpx.Client() as client:
         response = client.get(url)
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError:
+            task_logger.exception(f"下载PDF文件失败: {url}")
+            raise
+        task_logger.success(f"下载PDF文件成功: {url}", response=response)
         return response.content
 
 

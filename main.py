@@ -5,23 +5,20 @@ from core.logs import setup_logging
 
 setup_logging()
 
+from loguru import logger
+
 # 加载环境变量
+logger.info("加载环境变量")
+
 from dotenv import load_dotenv
 
 load_dotenv()
 
 
 import asyncio
-import logging
 
 from core.db import init_db
 from core.notion import get_stock_pool
-
-# 初始化日志
-logging.basicConfig(level=logging.DEBUG)
-logging.getLogger("httpx").setLevel(logging.INFO)
-logging.getLogger("httpcore").setLevel(logging.INFO)
-logger = logging.getLogger(__name__)
 
 
 async def main():

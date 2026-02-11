@@ -6,6 +6,7 @@ from typing import Literal, NotRequired, TypedDict
 
 import aiosqlite
 import xxhash
+from loguru import logger
 
 from ..models import NotionDate
 
@@ -73,6 +74,7 @@ async def init_db():
     返回值:
         无
     """
+    logger.info("初始化数据库连接")
     conn = await _get_db()
     await conn.execute("""
             CREATE TABLE IF NOT EXISTS update_records (
@@ -92,6 +94,7 @@ async def init_db():
             """
     )
     await conn.commit()
+    logger.success("数据库初始化完成")
 
 
 async def check_hash(data_list: list[HashContent]) -> list[HashContent]:

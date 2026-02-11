@@ -2,16 +2,15 @@
 资讯流数据库的相关操作
 """
 
-import logging
 import os
 from datetime import date, datetime
 from typing import Literal
 
+from loguru import logger
+
 from . import notion
 from .datetime_helper import cover_datetime_to_notion_date
 from .retry_helper import with_retry
-
-logger = logging.getLogger(__name__)
 
 TYPE_MAPPING = {
     "新闻资讯": "zUJ`",
@@ -38,9 +37,6 @@ async def create_dataflow_page(
     source_url: str | None = None,
     content: list[dict] | None = None,
 ) -> bool:
-    logger.debug(
-        f"创建页面：入参：{title}, {published_date}, {source_api}, {data_type}, {relation}, {attachment_id}, {source_url}, {content}"
-    )
     """在资讯流数据库中创建一个页面
     :param title: 标题
     :param published_date: 发布时间
@@ -71,9 +67,13 @@ async def create_dataflow_page(
         }
         if content is not None:
             create_params["children"] = content
-
+        notion_logger = logger.bind(
+            parent_id=FLOW_DATABASE, title=title, data_type=data_type
+        )
+        notion_logger.info("开始在Notion中创建页面")
         await notion.pages.create(**create_params)
+        notion_logger.success("成功在Notion中创建页面")
         return True
-    except Exception as e:
-        logger.error(f"创建页面失败: 标题={title}, 错误={e}")
+    except Exception:
+        notion_logger.exception("创建页面失败")
         return False

@@ -1,12 +1,10 @@
 import datetime
-import logging
 from datetime import date, datetime
 from functools import lru_cache
 from typing import NamedTuple
 
 import httpx
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 class Announcement(NamedTuple):
@@ -23,6 +21,7 @@ class Announcement(NamedTuple):
         size (int): 公告文件的大小（KB）。
         url (str): 公告文件的下载链接。
         published_date (datetime): 公告的发布日期和时间。
+        content (bytes | None): 公告文件的二进制内容。
     """
 
     id: str
@@ -31,6 +30,10 @@ class Announcement(NamedTuple):
     size: int
     url: str
     published_date: datetime
+
+
+class AnnouncementWithContent(Announcement):
+    content: bytes
 
 
 async def get_announcements(
@@ -50,9 +53,14 @@ async def get_announcements(
         list[Announcement]: 包含公告信息的列表，每个元素为Announcement对象，
                             包括公告ID、股票代码、标题、文件大小、下载链接和发布时间等信息。
     """
+    task_logger = logger.bind(
+        stock_list=stock_list, start_date=start_date, end_date=end_date
+    )
+
     if len(stock_list) == 0:
+        task_logger.warning("股票列表为空，跳过获取公告信息")
         return []
-    logger.info("获取公告信息")
+    task_logger.info("开始获取公告信息：{}", stock_list)
 
     url = "http://www.cninfo.com.cn/new/hisAnnouncement/query"
 
@@ -77,22 +85,32 @@ async def get_announcements(
     }
 
     async with httpx.AsyncClient() as client:
+        task_logger.info("开始发送获取公告请求")
         res = await client.post(url, params=payload)
+        try:
+            res.raise_for_status()
+        except httpx.HTTPStatusError:
+            task_logger.exception("获取公告请求失败")
+        task_logger.success("公告首页请求成功")
         response = res.json()
 
         # 处理 announcements 为 None 的情况
         announcements_data = response.get("announcements") or []
         announcements = [*announcements_data]
-        logger.info(
-            f"API 返回 announcements 数量: {len(announcements)}, totalpages: {response.get('totalpages', 0)}"
-        )
-
         # 使用接口返回的totalpages参数获取**剩余**页数
         page_count = response.get("totalpages", 0)
 
+        task_logger.info(
+            "API返回公告数量:{},总页数:{}",
+            len(announcements),
+            page_count,
+        )
+
         for i in range(page_count):
             payload["pageNum"] = str(i + 2)
+            task_logger.info("开始获取第{}页公告请求", i + 2)
             res = await client.post(url, params=payload)
+            task_logger.info("第{}页公告请求成功", i + 2)
             response = res.json()
             page_announcements = response.get("announcements") or []
             announcements.extend(page_announcements)
@@ -105,7 +123,9 @@ async def get_announcements(
         for each in announcements
         if not any(kw in each["announcementTitle"] for kw in filtered_keywords)
     ]
-    logger.info(f"过滤前: {before_filter_count}, 过滤后: {len(announcements)}")
+    task_logger.info(
+        f"公告关键字过滤，过滤前: {before_filter_count}, 过滤后: {len(announcements)}"
+    )
 
     result = [
         Announcement(
@@ -118,6 +138,7 @@ async def get_announcements(
         )
         for each in announcements
     ]
+    task_logger.success("公告信息获取完成，共{}条", len(result))
     return result
 
 

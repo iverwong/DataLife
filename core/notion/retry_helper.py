@@ -7,12 +7,10 @@
 
 import asyncio
 import functools
-import logging
 from typing import ParamSpec, TypeVar
 
 import httpx
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 P = ParamSpec("P")
 T = TypeVar("T")
@@ -64,25 +62,21 @@ def with_retry(
                     if attempt > 0:
                         # 指数退避：1s, 2s, 4s, 8s...
                         delay = RETRY_DELAY_BASE * (2 ** (attempt - 1))
-                        logger.info(
+                        logger.warning(
                             f"[重试] {func.__name__} 第 {attempt}/{max_retries} 次尝试，等待 {delay:.1f}s..."
                         )
                         await asyncio.sleep(delay)
                     return await func(*args, **kwargs)
                 except retryable_exceptions as e:
                     last_exception = e
-                    logger.warning(
-                        f"[重试] {func.__name__} 遇到网络错误: {type(e).__name__}: {e}"
-                    )
+                    logger.exception(f"[重试] {func.__name__} 遇到网络错误")
                     if attempt >= max_retries:
                         logger.error(
                             f"[重试] {func.__name__} 已达到最大重试次数 ({max_retries})，放弃重试"
                         )
                         raise
-                except Exception as e:
-                    logger.error(
-                        f"[重试] {func.__name__} 遇到非重试错误: {type(e).__name__}: {e}"
-                    )
+                except Exception:
+                    logger.exception(f"[重试] {func.__name__} 遇到非重试错误")
                     raise
             raise last_exception
 

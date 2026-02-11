@@ -1,11 +1,9 @@
-import logging
 import os
 
 import httpx
 from aiolimiter import AsyncLimiter
+from loguru import logger
 from notion_client import AsyncClient
-
-logger = logging.getLogger(__name__)
 
 
 class AsyncRateLimitedTransport(httpx.AsyncHTTPTransport):

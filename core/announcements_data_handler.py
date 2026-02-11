@@ -1,9 +1,9 @@
 import asyncio
-import logging
 from collections import defaultdict
 from datetime import date
 
 from dateutil.relativedelta import relativedelta
+from loguru import logger
 
 from .data import get_announcements, split_pdf
 from .db import check_hash, get_update_time, save_hash, set_update_time
@@ -17,17 +17,17 @@ from .notion import (
     upload_files_with_url,
 )
 
-logger = logging.getLogger(__name__)
-
 SPLIT_KEYWORDS = ["年度报告", "年报", "中期"]
 
 
 async def process_announcements_data_for_stock_list(
     stock_list: list[StockPool],
 ) -> None:
+    task_logger = logger.bind(stock_list=[stock.code for stock in stock_list])
+    task_logger.info("开始处理股票列表中的公告数据")
     stocks_dict = {stock.code: stock.id for stock in stock_list}
 
-    # 获取时间
+    # 获取更新时间
     update_times = await get_update_time(
         [stock.code for stock in stock_list], "announcements"
     )
@@ -64,11 +64,12 @@ async def process_announcements_data_for_stock_list(
 
     # 执行获取公告信息tasks
     announcements_nested = await asyncio.gather(*tasks)
+    task_logger.success("所有股票公告信息获取完成")
     announcements = [item for sublist in announcements_nested for item in sublist]
 
     # 如果没有获取到任何公告，直接返回
     if not announcements:
-        logger.info("没有获取到任何公告，跳过处理")
+        task_logger.info("没有获取到任何公告，跳过处理")
         return
 
     # 构建去重内容列表
@@ -83,9 +84,15 @@ async def process_announcements_data_for_stock_list(
     # 检查 hash 去重
     # check_hash 会返回新列表，包含 hash 字段，仅包含未存在的元素
     filtered_hash_contents = await check_hash(hash_contents)
+    task_logger.info(
+        "公告数据去重完成，去重前{}, 去重后{}",
+        len(hash_contents),
+        len(filtered_hash_contents),
+    )
 
     # 如果所有公告都已存在，直接返回
     if not filtered_hash_contents:
+        task_logger.info("所有公告都已存在，跳过处理")
         return
 
     # 构建需要保留的 content 集合（用 content 而不是 hash 来匹配）

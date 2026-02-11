@@ -1,5 +1,6 @@
-import logging
 from datetime import datetime
+
+from loguru import logger
 
 from .data import get_business
 from .db import check_hash, get_update_time, save_hash, set_update_time
@@ -10,8 +11,6 @@ from .notion import (
     cover_datetime_to_notion_date,
     create_dataflow_page,
 )
-
-logger = logging.getLogger(__name__)
 
 
 async def process_business_data_for_stock_list(stock_list: list[StockPool]) -> None:
@@ -29,17 +28,23 @@ async def process_business_data_for_stock_list(stock_list: list[StockPool]) -> N
     返回值:
         None: 该函数不返回任何值。
     """
-
+    task_logger = logger.bind(stock_list=[stock.code for stock in stock_list])
+    task_logger.info("开始处理股票列表中的主营构成数据")
     # 添加主营构成数据
+    task_logger.info("开始获取股票列表的主营构成数据更新时间")
     update_times = await get_update_time(
         [stock.code for stock in stock_list], "business"
+    )
+    task_logger.success(
+        "成功获取股票列表的主营构成数据更新时间", update_times=update_times
     )
     for i in range(len(stock_list)):
         stock = stock_list[i].code
         id = stock_list[i].id
+        stock_task_logger = task_logger.bind(stock=stock)
         # 如果半年数据还没到下个半年，则跳过更新
         if not _should_update_half_year(update_times[stock]):
-            logger.info(f"股票 {stock} 主营构成数据已更新，跳过更新")
+            stock_task_logger.info("股票{}主营构成数据已更新，跳过更新", stock)
             continue
 
         content = NotionContentBuilder()
@@ -54,7 +59,7 @@ async def process_business_data_for_stock_list(stock_list: list[StockPool]) -> N
         # 检查是否已存在
         filtered = await check_hash([hash_content])
         if not filtered:
-            logger.info(f"股票 {stock} 主营构成数据已存在，跳过创建")
+            stock_task_logger.info("股票{}主营构成数据已存在，跳过创建页面", stock)
             continue
 
         content.add_heading("按行业分类", level=3)
@@ -63,14 +68,21 @@ async def process_business_data_for_stock_list(stock_list: list[StockPool]) -> N
         content.add_table_from_dataframe(business_data.product_df)
         content.add_heading("按地区分类", level=3)
         content.add_table_from_dataframe(business_data.region_df)
-        await create_dataflow_page(
-            title=f"{stock}-{business_data.report_date}-主营构成",
-            published_date=business_data.report_date,
-            source_api=f"{get_business.__module__}.{get_business.__name__}",
-            data_type="主营构成",
-            relation=id,
-            content=content.build(),
+
+        payload = {
+            "title": f"{stock}-{business_data.report_date}-主营构成",
+            "published_date": business_data.report_date,
+            "source_api": f"{get_business.__module__}.{get_business.__name__}",
+            "data_type": "主营构成",
+            "relation": id,
+            "content": content.build(),
+        }
+        notion_logger = stock_task_logger.bind(
+            stock=stock, data_type="主营构成", published_date=business_data.report_date
         )
+        notion_logger.info("开始创建{}-主营业务构成数据流页面", stock)
+        await create_dataflow_page(**payload)
+        notion_logger.success("成功创建{}-主营业务构成数据流页面", stock)
 
         # 保存 hash
         await save_hash(filtered)
@@ -112,7 +124,9 @@ def _should_update_half_year(last_update_str: NotionDate | None):
     elif month == 12 and day == 31:  # Q4
         next_query_date = datetime(year + 1, 7, 1)
     else:
-        logger.error("传入的日期不是季度末，该函数仅能处理季度末数据，考虑排查数据错误")
+        logger.warning(
+            "传入的日期不是季度末，该函数仅能处理季度末数据，考虑排查数据错误"
+        )
         return False
 
     # 获取当前日期
