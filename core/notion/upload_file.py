@@ -27,11 +27,14 @@ async def upload_files_with_local(file_list: list[FileUpload]) -> list[FileUploa
     upload_tasks = [_upload_internal_and_wait(each) for each in file_list]
     file_uploaded = await asyncio.gather(*upload_tasks)
 
+    # 扁平化列表（每个任务返回 list[FileUploaded]，需要展开）
+    flattened = [item for sublist in file_uploaded for item in sublist]
+
     # 返回结构
     logger.info(
-        f"上传完成，成功: {sum(1 for f in file_list if f.get('successed'))}/{len(file_list)}"
+        f"上传完成，成功: {sum(1 for f in flattened if f.get('successed'))}/{len(flattened)}"
     )
-    return file_uploaded
+    return flattened
 
 
 @with_retry()
@@ -53,7 +56,7 @@ async def _upload_internal_and_wait(file_info: FileUpload) -> list[FileUploaded]
     logger.info(f"文件创建成功，file_id={file_id}，开始轮询状态...")
 
     # 轮询等待完成
-    poll_result = await _poll_upload_status(file_id)
+    poll_result = await _poll_upload_status(file_id, file_info["title"])
 
     # 处理结果
     if poll_result["status"] == "uploaded":
@@ -112,7 +115,7 @@ async def _upload_external_and_wait(file_info: FileUpload) -> FileUploaded:
     logger.info(f"外部文件创建成功，file_id={file_id}，开始轮询状态...")
 
     # 轮询直到完成
-    poll_result = await _poll_upload_status(file_id)
+    poll_result = await _poll_upload_status(file_id, file_info["title"])
 
     # 返回结果
     if poll_result["status"] == "uploaded":
@@ -127,25 +130,33 @@ async def _upload_external_and_wait(file_info: FileUpload) -> FileUploaded:
 
 
 @with_retry()
-async def _poll_upload_status(file_id: str, max_attempts=10):
+async def _poll_upload_status(file_id: str, filename: str, max_attempts=10):
     """轮询文件状态，指数退避：1, 2, 4, 8...
 
     每次查询 Notion API 失败时会自动重试（最多3次）
+
+    参数:
+        file_id: Notion 文件上传任务 ID
+        filename: 原始文件名（用于日志排查）
+        max_attempts: 最大轮询次数
     """
     intervals = [1, 2, 4, 8, 16]
 
     for attempt in range(max_attempts):
         logger.info(
-            f"轮询文件状态: file_id={file_id} (第 {attempt + 1}/{max_attempts} 次)"
+            f"轮询文件状态: {filename} | file_id={file_id} (第 {attempt + 1}/{max_attempts} 次)"
         )
         response = await notion.file_uploads.retrieve(file_id)
         status = response["status"]
 
-        logger.info(f"文件 {file_id} 状态: {status}")
+        logger.info(f"文件 {filename} | file_id={file_id} 状态: {status}")
+        logger.debug(f"文件 {filename} | file_id={file_id} 完整响应: {response}")
 
         # 完成或失败都返回
         if status in ["uploaded", "failed"]:
-            logger.info(f"文件 {file_id} 处理结束，最终状态: {status}")
+            logger.info(
+                f"文件 {filename} | file_id={file_id} 处理结束，最终状态: {status}"
+            )
             return response
 
         # 未完成，等待后重试
@@ -154,11 +165,13 @@ async def _poll_upload_status(file_id: str, max_attempts=10):
         else:
             wait_time = intervals[-1]  # 最多等16秒
 
-        logger.info(f"文件 {file_id} 未完成，等待 {wait_time} 秒后再次查询...")
+        logger.info(f"文件 {filename} 未完成，等待 {wait_time} 秒后再次查询...")
         await asyncio.sleep(wait_time)
 
     # 超时
-    logger.warning(f"文件 {file_id} 轮询超时 (超过 {max_attempts} 次尝试)")
+    logger.warning(
+        f"文件 {filename} | file_id={file_id} 轮询超时 (超过 {max_attempts} 次尝试)"
+    )
     return {"status": "failed", "file_import_result": {"error": "轮询超时"}}
 
 
