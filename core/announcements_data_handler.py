@@ -5,6 +5,8 @@ from datetime import date
 from dateutil.relativedelta import relativedelta
 from loguru import logger
 
+from core.notion.upload_file import FileUploadWithContent
+
 from .data import get_announcements, split_pdf
 from .db import check_hash, get_update_time, save_hash, set_update_time
 from .notion import (
@@ -131,7 +133,9 @@ async def process_announcements_data_for_stock_list(
     splited = split_pdf(file_need_split)
     # 将分割后的 Announcement 对象转换为 FileUpload 格式
     splited_file_uploads = [
-        FileUpload(url=announcement.url, title=announcement.title)
+        FileUploadWithContent(
+            url=announcement.url, title=announcement.title, content=announcement.content
+        )
         for announcement in splited
     ]
     internal_task = asyncio.create_task(upload_files_with_local(splited_file_uploads))
