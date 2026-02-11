@@ -3,15 +3,16 @@
 """
 
 import asyncio
+from dataclasses import dataclass
 from datetime import date
-from typing import NamedTuple
 
 import akshare as ak
 from loguru import logger
 from pandas import DataFrame
 
 
-class BusinessData(NamedTuple):
+@dataclass(frozen=True)
+class BusinessData:
     """
     定义一个命名元组类，用于存储业务数据的相关信息。
 

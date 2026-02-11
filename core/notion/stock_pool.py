@@ -1,5 +1,5 @@
 import os
-from typing import NamedTuple
+from dataclasses import dataclass
 
 from loguru import logger
 
@@ -7,7 +7,8 @@ from . import notion
 from .retry_helper import with_retry
 
 
-class StockPool(NamedTuple):
+@dataclass(frozen=True)
+class StockPool:
     """
     定义一个名为StockPool的命名元组类，用于表示股票池中的股票信息。
 

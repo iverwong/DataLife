@@ -1,13 +1,14 @@
 import datetime
+from dataclasses import dataclass
 from datetime import date, datetime
 from functools import lru_cache
-from typing import NamedTuple
 
 import httpx
 from loguru import logger
 
 
-class Announcement(NamedTuple):
+@dataclass(frozen=True)
+class Announcement:
     """
     表示一个公告信息的命名元组类。
 
@@ -21,7 +22,6 @@ class Announcement(NamedTuple):
         size (int): 公告文件的大小（KB）。
         url (str): 公告文件的下载链接。
         published_date (datetime): 公告的发布日期和时间。
-        content (bytes | None): 公告文件的二进制内容。
     """
 
     id: str
@@ -32,6 +32,7 @@ class Announcement(NamedTuple):
     published_date: datetime
 
 
+@dataclass(frozen=True)
 class AnnouncementWithContent(Announcement):
     content: bytes
 
