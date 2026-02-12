@@ -154,13 +154,13 @@ async def process_announcements_data_for_stock_list(
         create_tasks.append(
             asyncio.create_task(
                 create_dataflow_page(
-                    title=each.title,
-                    published_date=each.published_date,
+                    title=each["title"],
+                    published_date=each["published_date"],
                     source_api=f"{get_announcements.__module__}.{get_announcements.__name__}",
                     data_type="公告披露",
-                    relation=stocks_dict[each.stock],
+                    relation=stocks_dict[each["stock"]],
                     attachment_id=each["file_id"],
-                    source_url=each.url,
+                    source_url=each["url"],
                     content=None,
                 )
             )
