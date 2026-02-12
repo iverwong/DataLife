@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 from typing import TypedDict
 
 from loguru import logger
@@ -8,8 +9,10 @@ from .retry_helper import with_retry
 
 
 class FileUpload(TypedDict):
+    stock: str
     url: str
     title: str
+    published_date: datetime
 
 
 class FileUploadWithContent(FileUpload):

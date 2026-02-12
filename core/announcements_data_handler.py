@@ -150,17 +150,17 @@ async def process_announcements_data_for_stock_list(
     create_tasks = []
 
     # 创建数据流任务
-    for i in range(len(announcements)):
+    for each in uploaded:
         create_tasks.append(
             asyncio.create_task(
                 create_dataflow_page(
-                    title=announcements[i].title,
-                    published_date=announcements[i].published_date,
+                    title=each.title,
+                    published_date=each.published_date,
                     source_api=f"{get_announcements.__module__}.{get_announcements.__name__}",
                     data_type="公告披露",
-                    relation=stocks_dict[announcements[i].stock],
-                    attachment_id=uploaded[i].get("file_id"),
-                    source_url=announcements[i].url,
+                    relation=stocks_dict[each.stock],
+                    attachment_id=each["file_id"],
+                    source_url=each.url,
                     content=None,
                 )
             )
