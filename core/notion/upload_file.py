@@ -27,19 +27,64 @@ class FileUploaded(FileUpload):
 
 async def upload_files_with_local(
     file_list: list[FileUploadWithContent],
+    max_retries: int = 3,
 ) -> list[FileUploaded]:
-    # 创建上传任务，并等待完成
-    upload_tasks = [_upload_internal_and_wait(each) for each in file_list]
-    file_uploaded = await asyncio.gather(*upload_tasks)
+    """上传本地文件，对失败的文件自动重试。
 
-    # 扁平化列表（每个任务返回 list[FileUploaded]，需要展开）
-    flattened = [item for sublist in file_uploaded for item in sublist]
+    Args:
+        file_list: 待上传的文件列表
+        max_retries: 失败文件的最大重试次数，默认 3 次
+
+    Returns:
+        上传结果列表
+    """
+    all_results: list[FileUploaded] = []
+    pending_files = file_list  # 待处理的文件列表
+    attempt = 0
+
+    while pending_files and attempt <= max_retries:
+        logger.info(f"开始处理 {len(pending_files)} 个文件")
+
+        if attempt > 0:
+            logger.warning(
+                f"[重试] 第 {attempt}/{max_retries} 次重试，待重试文件: {[f['title'] for f in pending_files]}"
+            )
+
+        # 创建上传任务，并等待完成
+        upload_tasks = [_upload_internal_and_wait(each) for each in pending_files]
+        batch_results = await asyncio.gather(*upload_tasks)
+
+        # 扁平化列表（每个任务返回 list[FileUploaded]，需要展开）
+        flattened = [item for sublist in batch_results for item in sublist]
+
+        # 分离成功和失败的结果
+        succeeded = [r for r in flattened if r["successed"]]
+        failed = [r for r in flattened if not r["successed"]]
+        logger.info(f"本轮完成: 成功 {len(succeeded)} 个, 失败 {len(failed)} 个")
+
+        # 成功的立即加入最终结果
+        all_results.extend(succeeded)
+
+        # 处理失败的文件
+        if attempt < max_retries:
+            # 还有重试机会，准备重试
+            failed_urls = {r["url"] for r in failed}
+            pending_files = [f for f in file_list if f["url"] in failed_urls]
+        else:
+            # 已达最大重试次数，失败的也加入最终结果
+            logger.error(
+                f"以下文件已达最大重试次数仍失败: {[f['title'] for f in failed]}"
+            )
+            all_results.extend(failed)
+            pending_files = []
+
+        attempt += 1
 
     # 返回结构
     logger.info(
-        f"上传完成，成功: {sum(1 for f in flattened if f.get('successed'))}/{len(flattened)}"
+        f"上传完成，成功: {sum(1 for f in all_results if f.get('successed'))}/{len(all_results)}"
     )
-    return flattened
+    return all_results
 
 
 @with_retry()
@@ -81,30 +126,69 @@ async def _upload_internal_and_wait(
     ]
 
 
-async def upload_files_with_url(file_list: list[FileUpload]) -> list[FileUploaded]:
-    """
-    异步上传文件列表中的所有文件，并等待上传完成。
+async def upload_files_with_url(
+    file_list: list[FileUpload],
+    max_retries: int = 2,
+) -> list[FileUploaded]:
+    """异步上传文件列表中的所有文件，对失败的文件自动重试。
 
     参数:
         file_list (list[FileUpload]): 包含待上传文件信息的列表，每个元素应为 FileUpload 类型。
+        max_retries (int): 失败文件的最大重试次数，默认 2 次。
 
     返回:
-        list[FileUpload]: 上传完成后返回的文件列表，其中每个文件对象可能包含上传状态等信息。
+        list[FileUploaded]: 上传完成后返回的文件列表，其中每个文件对象包含上传状态等信息。
     """
     task_logger = logger.bind(file_list=file_list)
     task_logger.info("开始上传文件列表中的所有文件")
-    # 1. 创建所有上传任务
-    upload_tasks = [_upload_external_and_wait(each) for each in file_list]
 
-    # 2. 并发等待所有文件上传完成
-    file_uploaded = await asyncio.gather(*upload_tasks)
+    all_results: list[FileUploaded] = []
+    pending_files = file_list  # 待处理的文件列表
+    attempt = 0
 
-    # 3. 所有文件处理完毕，返回结果
+    while pending_files and attempt <= max_retries:
+        task_logger.info(f"开始处理 {len(pending_files)} 个文件")
+
+        if attempt > 0:
+            task_logger.warning(
+                f"[重试] 第 {attempt}/{max_retries} 次重试，待重试文件: {[f['title'] for f in pending_files]}"
+            )
+
+        # 1. 创建所有上传任务
+        upload_tasks = [_upload_external_and_wait(each) for each in pending_files]
+
+        # 2. 并发等待所有文件上传完成
+        batch_results = await asyncio.gather(*upload_tasks)
+
+        # 3. 分离成功和失败的结果
+        succeeded = [r for r in batch_results if r["successed"]]
+        failed = [r for r in batch_results if not r["successed"]]
+        task_logger.info(f"本轮完成: 成功 {len(succeeded)} 个, 失败 {len(failed)} 个")
+
+        # 4. 成功的立即加入最终结果
+        all_results.extend(succeeded)
+
+        # 5. 处理失败的文件
+        if attempt < max_retries:
+            # 还有重试机会，准备重试
+            failed_urls = {r["url"] for r in failed}
+            pending_files = [f for f in file_list if f["url"] in failed_urls]
+        else:
+            # 已达最大重试次数，失败的也加入最终结果
+            task_logger.error(
+                f"以下文件已达最大重试次数仍失败: {[f['title'] for f in failed]}"
+            )
+            all_results.extend(failed)
+            pending_files = []
+
+        attempt += 1
+
+    # 6. 所有文件处理完毕，返回结果
     task_logger.success(
-        f"上传任务完成: {sum(1 for f in file_uploaded if f['successed'])}/{len(file_uploaded)}个文件已成功",
-        file_uploaded=file_uploaded,
+        f"上传任务完成: {sum(1 for f in all_results if f['successed'])}/{len(all_results)}个文件已成功",
+        file_uploaded=all_results,
     )
-    return file_uploaded
+    return all_results
 
 
 @with_retry()
@@ -137,7 +221,7 @@ async def _upload_external_and_wait(file_info: FileUpload) -> FileUploaded:
 
 
 @with_retry()
-async def _poll_upload_status(file_id: str, filename: str, max_attempts=10):
+async def _poll_upload_status(file_id: str, filename: str, max_attempts=5):
     """轮询文件状态，指数退避：1, 2, 4, 8...
 
     每次查询 Notion API 失败时会自动重试（最多3次）
