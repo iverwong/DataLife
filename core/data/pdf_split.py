@@ -20,7 +20,7 @@ def split_pdf(announcement_list: list[Announcement]) -> list[AnnouncementWithCon
     返回:
         list[Announcement]: 分割后的公告列表，包含原始公告和新生成的分割公告
     """
-    result = []
+    result: list[AnnouncementWithContent] = []
     task_logger = logger.bind(announcement_list=announcement_list)
 
     for announcement in announcement_list:

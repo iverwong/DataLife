@@ -112,7 +112,12 @@ async def process_announcements_data_for_stock_list(
 
     # 上传附件
     file_uploads = [
-        FileUpload(url=announcement.url, title=announcement.title)
+        FileUpload(
+            url=announcement.url,
+            title=announcement.title,
+            stock=announcement.stock,
+            published_date=announcement.published_date,
+        )
         for announcement in announcements
         if announcement.size <= 1000
         or not any(kw in announcement.title for kw in SPLIT_KEYWORDS)
@@ -134,7 +139,11 @@ async def process_announcements_data_for_stock_list(
     # 将分割后的 Announcement 对象转换为 FileUpload 格式
     splited_file_uploads = [
         FileUploadWithContent(
-            url=announcement.url, title=announcement.title, content=announcement.content
+            url=announcement.url,
+            title=announcement.title,
+            stock=announcement.stock,
+            published_date=announcement.published_date,
+            content=announcement.content,
         )
         for announcement in splited
     ]
