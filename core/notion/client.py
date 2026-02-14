@@ -1,9 +1,17 @@
+from httpx import Request, Response
+
+
+from aiolimiter import AsyncLimiter
+
+from typing import override
+
 import os
 
 import httpx
-from aiolimiter import AsyncLimiter
 from loguru import logger
 from notion_client import AsyncClient
+
+from typing import ParamSpecKwargs
 
 
 class AsyncRateLimitedTransport(httpx.AsyncHTTPTransport):
@@ -13,22 +21,27 @@ class AsyncRateLimitedTransport(httpx.AsyncHTTPTransport):
     配置：每秒最多 3 个请求（符合 Notion API 限制）
     """
 
-    def __init__(self, *, max_rate: float, time_period: float = 1.0, **kwargs):
-        super().__init__(**kwargs)
-        self._max_rate = max_rate
-        self._time_period = time_period
-        self._limiter = AsyncLimiter(max_rate=max_rate, time_period=time_period)
+    def __init__(
+        self, *, max_rate: float, time_period: float = 1.0, **kwargs: ParamSpecKwargs
+    ):
+        super().__init__(**kwargs)  # pyright: ignore[reportArgumentType]
+        self._max_rate: float = max_rate
+        self._time_period: float = time_period
+        self._limiter: AsyncLimiter = AsyncLimiter(
+            max_rate=max_rate, time_period=time_period
+        )
         logger.info(
-            f"速率限制器初始化: max_rate={max_rate}/time_period={time_period}s "
-            f"(约 {max_rate / time_period:.1f} 请求/秒)"
+            f"速率限制器初始化: max_rate={max_rate}/time_period={time_period}s (约 {max_rate / time_period:.1f} 请求/秒)"
         )
 
-    async def handle_async_request(self, request):
+    @override
+    async def handle_async_request(self, request: Request) -> Response:
         logger.debug(f"[RateLimit] 请求: {request.method} {request.url.host}")
         async with self._limiter:
             logger.debug(f"[RateLimit] 放行请求: {request.method} {request.url.host}")
             return await super().handle_async_request(request)
 
+    @override
     async def aclose(self):
         await super().aclose()
 

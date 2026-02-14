@@ -12,7 +12,7 @@ logger.info("加载环境变量")
 
 from dotenv import load_dotenv
 
-load_dotenv()
+_ = load_dotenv()
 
 
 import asyncio
@@ -21,7 +21,7 @@ from core.db import init_db
 from core.notion import get_stock_pool
 
 
-async def main():
+async def main() -> None:
     await init_db()
 
     stock_list = await get_stock_pool()
@@ -37,6 +37,8 @@ async def main():
     )
 
     await process_announcements_data_for_stock_list(stock_list)
+
+    await logger.complete()
 
 
 if __name__ == "__main__":

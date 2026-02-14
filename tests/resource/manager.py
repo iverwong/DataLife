@@ -8,13 +8,15 @@
 - 基于类的资源定义
 """
 
+from __future__ import annotations
+
 import json
 import pickle
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, auto
 from pathlib import Path
-from typing import Any, Generic, Optional, Type, TypeVar
+from typing import Generic, TypeVar
 
 
 class ResourceType(Enum):
@@ -51,7 +53,7 @@ class ResourceMeta:
     source: str = ""
     tags: tuple[str, ...] = field(default_factory=tuple)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, object]:
         """转换为字典"""
         return {
             "name": self.name,
@@ -64,16 +66,18 @@ class ResourceMeta:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "ResourceMeta":
+    def from_dict(cls, data: dict[str, object]) -> ResourceMeta:
         """从字典创建"""
+        raw_tags = data.get("tags", [])
+        tags = tuple(str(t) for t in raw_tags) if isinstance(raw_tags, list) else ()  # pyright: ignore[reportUnknownArgumentType]
         return cls(
-            name=data["name"],
-            resource_type=ResourceType[data["resource_type"]],
-            version=data.get("version", "1.0.0"),
-            created_at=data.get("created_at", datetime.now().isoformat()),
-            description=data.get("description", ""),
-            source=data.get("source", ""),
-            tags=tuple(data.get("tags", [])),
+            name=str(data["name"]),
+            resource_type=ResourceType[str(data["resource_type"])],
+            version=str(data.get("version", "1.0.0")),
+            created_at=str(data.get("created_at", datetime.now().isoformat())),
+            description=str(data.get("description", "")),
+            source=str(data.get("source", "")),
+            tags=tags,
         )
 
 
@@ -93,11 +97,11 @@ class StaticResource(Generic[T]):
     meta: ResourceMeta
     data: T
 
-    def is_type(self, expected_type: Type) -> bool:
+    def is_type(self, expected_type: type[object]) -> bool:
         """判断数据是否为指定类型"""
         return isinstance(self.data, expected_type)
 
-    def get_data(self, expected_type: Optional[Type[T]] = None) -> T:
+    def get_data(self, expected_type: type[T] | None = None) -> T:
         """
         获取数据，可选类型检查
 
@@ -128,7 +132,10 @@ class ResourceManager:
         └── {name}.meta.json    # 元数据文件
     """
 
-    def __init__(self, resource_dir: Optional[Path] = None):
+    resource_dir: Path
+    _cache: dict[str, StaticResource[object]]
+
+    def __init__(self, resource_dir: Path | None = None):
         """
         初始化资源管理器
 
@@ -138,7 +145,7 @@ class ResourceManager:
         if resource_dir is None:
             resource_dir = Path(__file__).parent
         self.resource_dir = Path(resource_dir)
-        self._cache: dict[str, StaticResource] = {}
+        self._cache = {}
 
     def _get_pickle_path(self, name: str) -> Path:
         """获取 pickle 文件路径"""
@@ -151,14 +158,14 @@ class ResourceManager:
     def save(
         self,
         name: str,
-        data: Any,
+        data: object,
         resource_type: ResourceType,
         version: str = "1.0.0",
         description: str = "",
         source: str = "",
-        tags: Optional[list[str]] = None,
+        tags: list[str] | None = None,
         use_cache: bool = True,
-    ) -> StaticResource:
+    ) -> StaticResource[object]:
         """
         保存资源到文件
 
@@ -184,7 +191,7 @@ class ResourceManager:
             tags=tuple(tags or []),
         )
 
-        resource = StaticResource(meta=meta, data=data)
+        resource: StaticResource[object] = StaticResource(meta=meta, data=data)
 
         # 保存 pickle 数据
         pickle_path = self._get_pickle_path(name)
@@ -205,7 +212,7 @@ class ResourceManager:
     def load(
         self,
         name: str,
-        expected_type: Optional[Type[T]] = None,
+        expected_type: type[T] | None = None,
         use_cache: bool = True,
     ) -> StaticResource[T]:
         """
@@ -228,7 +235,7 @@ class ResourceManager:
             resource = self._cache[name]
             if expected_type is not None:
                 resource.get_data(expected_type)
-            return resource
+            return resource  # pyright: ignore[reportReturnType]
 
         # 加载元数据
         meta_path = self._get_meta_path(name)
@@ -236,7 +243,7 @@ class ResourceManager:
             raise FileNotFoundError(f"资源元数据不存在: {meta_path}")
 
         with open(meta_path, "r", encoding="utf-8") as f:
-            meta = ResourceMeta.from_dict(json.load(f))
+            meta = ResourceMeta.from_dict(json.load(f))  # pyright: ignore[reportAny]
 
         # 加载数据
         pickle_path = self._get_pickle_path(name)
@@ -244,19 +251,19 @@ class ResourceManager:
             raise FileNotFoundError(f"资源数据不存在: {pickle_path}")
 
         with open(pickle_path, "rb") as f:
-            data = pickle.load(f)
+            data: object = pickle.load(f)  # pyright: ignore[reportAny] # noqa: S301
 
-        resource = StaticResource(meta=meta, data=data)
+        resource_obj: StaticResource[object] = StaticResource(meta=meta, data=data)
 
         # 类型检查
         if expected_type is not None:
-            resource.get_data(expected_type)
+            resource_obj.get_data(expected_type)
 
         # 缓存
         if use_cache:
-            self._cache[name] = resource
+            self._cache[name] = resource_obj
 
-        return resource
+        return resource_obj  # pyright: ignore[reportReturnType]
 
     def exists(self, name: str) -> bool:
         """检查资源是否存在"""
@@ -268,11 +275,11 @@ class ResourceManager:
         """仅获取资源元数据"""
         meta_path = self._get_meta_path(name)
         with open(meta_path, "r", encoding="utf-8") as f:
-            return ResourceMeta.from_dict(json.load(f))
+            return ResourceMeta.from_dict(json.load(f))  # pyright: ignore[reportAny]
 
     def list_resources(self) -> list[str]:
         """列出所有资源名称"""
-        resources = []
+        resources: list[str] = []
         for meta_file in self.resource_dir.glob("*.meta.json"):
             resources.append(meta_file.stem.replace(".meta", ""))
         return sorted(resources)
@@ -289,18 +296,31 @@ resource_manager = ResourceManager()
 # 便捷函数
 def save_resource(
     name: str,
-    data: Any,
+    data: object,
     resource_type: ResourceType,
-    **kwargs,
-) -> StaticResource:
+    version: str = "1.0.0",
+    description: str = "",
+    source: str = "",
+    tags: list[str] | None = None,
+    use_cache: bool = True,
+) -> StaticResource[object]:
     """使用全局管理器保存资源"""
-    return resource_manager.save(name, data, resource_type, **kwargs)
+    return resource_manager.save(
+        name,
+        data,
+        resource_type,
+        version=version,
+        description=description,
+        source=source,
+        tags=tags,
+        use_cache=use_cache,
+    )
 
 
 def load_resource(
     name: str,
-    expected_type: Optional[Type[T]] = None,
-    **kwargs,
+    expected_type: type[T] | None = None,
+    use_cache: bool = True,
 ) -> StaticResource[T]:
     """使用全局管理器加载资源"""
-    return resource_manager.load(name, expected_type, **kwargs)
+    return resource_manager.load(name, expected_type, use_cache=use_cache)

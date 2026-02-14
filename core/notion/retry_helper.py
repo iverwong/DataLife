@@ -7,8 +7,9 @@
 
 import asyncio
 import functools
-from typing import ParamSpec, TypeVar
-
+from collections.abc import Awaitable, Coroutine
+from typing import ParamSpec, TypeVar, Callable
+from notion_client.errors import RequestTimeoutError
 import httpx
 from loguru import logger
 
@@ -24,12 +25,14 @@ RETRYABLE_EXCEPTIONS = (
     httpx.NetworkError,
     httpx.ReadError,
     httpx.WriteError,
+    RequestTimeoutError,
 )
 
 
 def with_retry(
-    max_retries: int = MAX_RETRIES, retryable_exceptions: tuple = RETRYABLE_EXCEPTIONS
-):
+    max_retries: int = MAX_RETRIES,
+    retryable_exceptions: tuple[type[Exception], ...] = RETRYABLE_EXCEPTIONS,
+) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Coroutine[None, None, T]]]:
     """装饰器：为异步函数添加指数退避重试逻辑
 
     使用示例:
@@ -53,15 +56,17 @@ def with_retry(
         Exception: 遇到非可重试异常时，直接抛出
     """
 
-    def decorator(func):
+    def decorator(
+        func: Callable[P, Awaitable[T]],
+    ) -> Callable[P, Coroutine[None, None, T]]:
         @functools.wraps(func)
-        async def wrapper(*args, **kwargs):
-            last_exception = None
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+            last_exception = Exception
             for attempt in range(max_retries + 1):
                 try:
                     if attempt > 0:
                         # 指数退避：1s, 2s, 4s, 8s...
-                        delay = RETRY_DELAY_BASE * (2 ** (attempt - 1))
+                        delay = RETRY_DELAY_BASE * (2.0 ** (attempt - 1))
                         logger.warning(
                             f"[重试] {func.__name__} 第 {attempt}/{max_retries} 次尝试，等待 {delay:.1f}s..."
                         )

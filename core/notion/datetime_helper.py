@@ -20,9 +20,9 @@ def cover_datetime_to_notion_date(input_: datetime | date) -> NotionDate:
         NotionDate: 转换后的NotionDate对象。如果输入是date类型，则直接转换为字符串格式；
                     如果输入是datetime类型，则将其转换为带时区信息的ISO格式字符串。
     """
-    if isinstance(input_, date):
-        return NotionDate(str(input_))
-    return NotionDate(input_.astimezone(TZ).isoformat(timespec="milliseconds"))
+    if isinstance(input_, datetime):
+        return NotionDate(input_.astimezone(TZ).isoformat(timespec="milliseconds"))
+    return NotionDate(str(input_))
 
 
 def cover_notion_date_to_datetime(input: NotionDate) -> datetime:

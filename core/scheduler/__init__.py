@@ -1,4 +1,4 @@
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler  # pyright: ignore[reportMissingTypeStubs]
 
 scheduler = AsyncIOScheduler(timezone="Asia/Shanghai")
 scheduler.start()

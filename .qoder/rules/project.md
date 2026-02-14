@@ -7,6 +7,15 @@ trigger: always_on
 
 本项目从巨潮资讯网、AkShare 等数据源异步采集上市公司公告与主营构成等数据，经去重与预处理后写入 Notion 数据库，形成统一的"资讯流"页面。
 
+## 运行环境
+！！！**重要**！！！
+
+- **Python 虚拟环境**: 本项目使用 venv 虚拟环境管理依赖
+- **环境激活**: 所有 Python 命令执行前必须先激活虚拟环境
+  - PowerShell: `./venv/Scripts/Activate.ps1`
+  - 激活后终端提示符会显示 `(venv)` 前缀
+- **禁止**: 在未激活虚拟环境的情况下运行任何 Python 脚本或测试
+
 ## 技术栈
 
 - **语言**: Python 3.8+
@@ -98,14 +107,6 @@ handler 模块负责编排以上流程，main.py 负责初始化与调度入口�
 - 使用 `content_builder.py` 提供的方法构建 Notion Block
 - 支持的块类型：标题、段落、表格、分隔线、Callout
 - 新增块类型时在 content_builder 中扩展，禁止在 handler 中直接拼装 JSON
-
-## 运行环境
-
-- **Python 虚拟环境**: 本项目使用 venv 虚拟环境管理依赖
-- **环境激活**: 所有 Python 命令执行前必须先激活虚拟环境
-  - PowerShell: `./venv/Scripts/Activate.ps1`
-  - 激活后终端提示符会显示 `(venv)` 前缀
-- **禁止**: 在未激活虚拟环境的情况下运行任何 Python 脚本或测试
 
 ## 环境变量
 

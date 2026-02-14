@@ -2,9 +2,12 @@ import asyncio
 from datetime import datetime
 from typing import TypedDict
 
+from operator import attrgetter
+
 from loguru import logger
 
-from . import notion
+from .client import notion
+from .models import FileImportError, FileUploadResponse
 from .retry_helper import with_retry
 
 
@@ -13,6 +16,7 @@ class FileUpload(TypedDict):
     url: str
     title: str
     published_date: datetime
+    hash_content: str  # 新增：携带原始hash内容
 
 
 class FileUploadWithContent(FileUpload):
@@ -96,32 +100,45 @@ async def _upload_internal_and_wait(
     # 所有传入的文件都已经是分割后的文件，直接上传
     # 创建单个文件上传任务
     task_logger.info(f"创建{file_info['title']}的Notion上传对象")
-    create_result = await notion.file_uploads.create(
-        filename=file_info["title"] + ".PDF", content_type="application/pdf"
+    create_result = FileUploadResponse.model_validate(
+        await notion.file_uploads.create(
+            filename=file_info["title"] + ".PDF", content_type="application/pdf"
+        )
     )
-    file_id = create_result["id"]
+    file_id = create_result.id
     task_logger.info(
         f"文件创建成功，{file_info['title']}|{file_id}，开始上传", file_id=file_id
     )
 
     # 开始上传
-    send_result = await notion.file_uploads.send(
-        file_id,
-        file=(file_info["title"] + ".PDF", file_info["content"], "application/pdf"),
+    send_result = FileUploadResponse.model_validate(
+        await notion.file_uploads.send(
+            file_id,
+            file=(file_info["title"] + ".PDF", file_info["content"], "application/pdf"),
+        )
     )
 
-    if send_result["status"] == "uploaded":
+    if send_result.status == "uploaded":
         file_successed = True
         file_error = None
         task_logger.success(f"上传文件 {file_info['title']} 成功")
     else:
         file_successed = False
-        file_error = send_result.get("file_import_result", {}).get("error", "未知错误")
+        file_error = (
+            attrgetter("file_import_result.error.message")(send_result) or "未知错误"
+        )
         task_logger.error(f"上传文件 {file_info['title']} 失败，响应为{send_result}")
 
     return [
         FileUploaded(
-            **file_info, file_id=file_id, successed=file_successed, error=file_error
+            stock=file_info["stock"],
+            url=file_info["url"],
+            title=file_info["title"],
+            published_date=file_info["published_date"],
+            hash_content=file_info["hash_content"],
+            file_id=file_id,
+            successed=file_successed,
+            error=file_error,
         )
     ]
 
@@ -132,12 +149,12 @@ async def upload_files_with_url(
 ) -> list[FileUploaded]:
     """异步上传文件列表中的所有文件，对失败的文件自动重试。
 
-    参数:
-        file_list (list[FileUpload]): 包含待上传文件信息的列表，每个元素应为 FileUpload 类型。
-        max_retries (int): 失败文件的最大重试次数，默认 2 次。
+    Args:
+        file_list: 包含待上传文件信息的列表，每个元素应为 FileUpload 类型。
+        max_retries: 失败文件的最大重试次数，默认 2 次。
 
-    返回:
-        list[FileUploaded]: 上传完成后返回的文件列表，其中每个文件对象包含上传状态等信息。
+    Returns:
+        上传完成后返回的文件列表，其中每个文件对象包含上传状态等信息。
     """
     task_logger = logger.bind(file_list=file_list)
     task_logger.info("开始上传文件列表中的所有文件")
@@ -197,36 +214,55 @@ async def _upload_external_and_wait(file_info: FileUpload) -> FileUploaded:
     task_logger = logger.bind(file_info=file_info)
     # 创建上传
     task_logger.info("上传外部文件：{} ({})", file_info["title"], file_info["url"])
-    response = await notion.file_uploads.create(
-        mode="external_url",
-        filename=file_info["title"] + ".PDF",
-        external_url=file_info["url"],
+    create_response = FileUploadResponse.model_validate(
+        await notion.file_uploads.create(
+            mode="external_url",
+            filename=file_info["title"] + ".PDF",
+            external_url=file_info["url"],
+        )
     )
-    file_id = response["id"]
-    task_logger.info("外部文件创建成功，id={}，开始轮询", file_id, response=response)
+    file_id = create_response.id
+    task_logger.info("外部文件创建成功，id={}，开始轮询", file_id)
 
     # 轮询直到完成
     poll_result = await _poll_upload_status(file_id, file_info["title"])
 
     # 返回结果
-    if poll_result["status"] == "uploaded":
+    if poll_result.status == "uploaded":
         task_logger.success(f"✓ {file_info['title']} 上传成功")
         return FileUploaded(**file_info, file_id=file_id, successed=True, error=None)
     else:
-        error_msg = poll_result.get("file_import_result", {}).get("error", "未知错误")
+        file_import_result = poll_result.file_import_result
+        if file_import_result:
+            if isinstance(file_import_result, FileImportError):
+                error_msg = file_import_result.error.message
+            else:
+                task_logger.error(
+                    f"收到了状态不为 `uploaded` 但文件导入结果不为 `error` 的报文：{poll_result}"
+                )
+                raise TypeError(
+                    "收到了状态不为 `uploaded` 但文件导入结果不为 `error` 的报文"
+                )
+        else:
+            error_msg = "轮询超时"
         task_logger.error(f"✗ {file_info['title']} 上传失败: {error_msg}")
         return FileUploaded(
-            **file_info, file_id=file_id, successed=False, error=error_msg
+            **file_info,
+            file_id=file_id,
+            successed=False,
+            error=error_msg,
         )
 
 
 @with_retry()
-async def _poll_upload_status(file_id: str, filename: str, max_attempts=5):
+async def _poll_upload_status(
+    file_id: str, filename: str, max_attempts: int = 5
+) -> FileUploadResponse:
     """轮询文件状态，指数退避：1, 2, 4, 8...
 
     每次查询 Notion API 失败时会自动重试（最多3次）
 
-    参数:
+    Args:
         file_id: Notion 文件上传任务 ID
         filename: 原始文件名（用于日志排查）
         max_attempts: 最大轮询次数
@@ -238,17 +274,16 @@ async def _poll_upload_status(file_id: str, filename: str, max_attempts=5):
         task_logger.info(
             f"轮询文件状态: {filename} | file_id={file_id} (第 {attempt + 1}/{max_attempts} 次)"
         )
-        response = await notion.file_uploads.retrieve(file_id)
-        status = response["status"]
-
-        task_logger.info(
-            f"文件 {filename} | file_id={file_id} 状态: {status}", response=response
+        response = FileUploadResponse.model_validate(
+            await notion.file_uploads.retrieve(file_id)
         )
 
+        task_logger.info(f"文件 {filename} | file_id={file_id} 状态: {response.status}")
+
         # 完成或失败都返回
-        if status in ["uploaded", "failed"]:
+        if response.status in ("uploaded", "failed"):
             task_logger.info(
-                f"文件 {filename} | file_id={file_id} 处理结束，最终状态: {status}"
+                f"文件 {filename} | file_id={file_id} 处理结束，最终状态: {response.status}"
             )
             return response
 
@@ -267,7 +302,11 @@ async def _poll_upload_status(file_id: str, filename: str, max_attempts=5):
     task_logger.warning(
         f"文件 {filename} | file_id={file_id} 轮询超时 (超过 {max_attempts} 次尝试)"
     )
-    return {"status": "failed", "file_import_result": {"error": "轮询超时"}}
+    return FileUploadResponse(
+        id=file_id,
+        created_time="",
+        status="failed",
+    )
 
 
 __all__ = ["upload_files_with_url", "upload_files_with_local"]

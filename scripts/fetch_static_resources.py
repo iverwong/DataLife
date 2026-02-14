@@ -6,29 +6,30 @@
 
 import asyncio
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 # 添加项目根目录到路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import akshare as ak
+import akshare as ak  # pyright: ignore[reportMissingTypeStubs]
 import httpx
 
-from core.data.announcement import _get_stock_json
+from core.data.announcement import Announcement
+from core.data.models import AnnouncementItem, AnnouncementsResponse
 from tests.resource.manager import ResourceType, resource_manager
 
 
-def fetch_business_data():
+def fetch_business_data() -> None:
     """获取主营业务数据"""
     print("正在获取阳光电源(300274)主营业务数据...")
     code = "SZ300274"
-    df = ak.stock_zygc_em(code)
+    df = ak.stock_zygc_em(code)  # pyright: ignore[reportUnknownMemberType]
     print(f"获取到 {len(df)} 行数据")
-    print(f"列名: {df.columns.tolist()}")
-    print(f"报告日期范围: {df['报告日期'].min()} ~ {df['报告日期'].max()}")
+    print(f"列名: {df.columns.tolist()}")  # pyright: ignore[reportUnknownMemberType]
+    print(f"报告日期范围: {df['报告日期'].min()} ~ {df['报告日期'].max()}")  # pyright: ignore[reportUnknownMemberType]
 
-    resource_manager.save(
+    _ = resource_manager.save(
         name="ygdq_300274_business",
         data=df,
         resource_type=ResourceType.DATAFRAME,
@@ -40,11 +41,13 @@ def fetch_business_data():
     print("主营业务数据已保存")
 
 
-async def fetch_announcements_data():
+async def fetch_announcements_data() -> None:
     """获取公告数据"""
     print("\n正在获取阳光电源公告数据...")
 
     # 先获取股票映射
+    from core.data.announcement import _get_stock_json
+
     stock_json = await _get_stock_json()
     print(f"股票映射获取成功，共 {len(stock_json)} 只股票")
 
@@ -74,13 +77,13 @@ async def fetch_announcements_data():
 
     async with httpx.AsyncClient() as client:
         res = await client.post(url, data=payload)
-        response_data = res.json()
+        response_data: dict[str, object] = res.json()  # pyright: ignore[reportExplicitAny]
 
-    announcements_list = response_data.get("announcements") or []
+    response = AnnouncementsResponse.model_validate(response_data)
+    announcements_list = response.announcements or []
     print(f"API返回公告数量: {len(announcements_list)}")
-    print(f"API返回状态: {response_data.get('classifiedAnnouncements') is not None}")
 
-    resource_manager.save(
+    _ = resource_manager.save(
         name="ygdq_300274_announcements_response",
         data=response_data,
         resource_type=ResourceType.JSON,
@@ -91,35 +94,29 @@ async def fetch_announcements_data():
     )
     print("API响应数据已保存")
 
-    # 解析公告列表
-    from datetime import datetime
-
-    from core.data.announcement import Announcement
-
-    announcements = response_data.get("announcements") or []
-
     # 过滤并转换为 Announcement 对象
-    filtered = [
-        each
-        for each in announcements
-        if each["announcementTitle"] not in ["摘要", "英文版", "图文版"]
+    filtered_keywords = ["摘要", "英文版", "图文版"]
+    filtered: list[AnnouncementItem] = [
+        item
+        for item in announcements_list
+        if not any(kw in item.announcementTitle for kw in filtered_keywords)
     ]
 
     result = [
         Announcement(
-            each["announcementId"],
-            each["secCode"],
-            f"{each['secName']}({each['secCode']})-{each['announcementTitle']}",
-            each["adjunctSize"],
-            f"https://static.cninfo.com.cn/{each['adjunctUrl']}",
-            datetime.fromtimestamp(each["announcementTime"] / 1000),
+            id=item.announcementId,
+            stock=item.secCode,
+            title=f"{item.secName}({item.secCode})-{item.announcementTitle}",
+            size=item.adjunctSize,
+            url=f"https://static.cninfo.com.cn/{item.adjunctUrl}",
+            published_date=datetime.fromtimestamp(item.announcementTime / 1000),
         )
-        for each in filtered
+        for item in filtered
     ]
 
     print(f"解析后公告数量: {len(result)}")
 
-    resource_manager.save(
+    _ = resource_manager.save(
         name="ygdq_300274_announcements",
         data=result,
         resource_type=ResourceType.PICKLE,
@@ -131,7 +128,7 @@ async def fetch_announcements_data():
     print("公告数据已保存")
 
 
-async def main():
+async def main() -> None:
     """主函数"""
     print("=" * 50)
     print("开始获取静态资源")

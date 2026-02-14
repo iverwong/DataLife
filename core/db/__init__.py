@@ -2,7 +2,7 @@ import json
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Literal, NotRequired, TypedDict
+from typing import Literal, TypedDict
 
 import aiosqlite
 import xxhash
@@ -20,7 +20,10 @@ KEYS = Literal["business", "announcements"]
 class HashContent(TypedDict):
     data_type: str
     content: str
-    hash: NotRequired[str]
+
+
+class HashContentWithHash(HashContent):
+    hash: str
 
 
 db = None
@@ -76,7 +79,7 @@ async def init_db():
     """
     logger.info("初始化数据库连接")
     conn = await _get_db()
-    await conn.execute("""
+    _ = await conn.execute("""
             CREATE TABLE IF NOT EXISTS update_records (
                 stock TEXT NOT NULL,
                 key TEXT NOT NULL,
@@ -85,7 +88,7 @@ async def init_db():
                 )
             """)
     # 创建Hash表
-    await conn.execute(
+    _ = await conn.execute(
         """
             CREATE TABLE IF NOT EXISTS hash (
                 hash TEXT PRIMARY KEY,
@@ -97,7 +100,7 @@ async def init_db():
     logger.success("数据库初始化完成")
 
 
-async def check_hash(data_list: list[HashContent]) -> list[HashContent]:
+async def check_hash(data_list: list[HashContent]) -> list[HashContentWithHash]:
     """
     检查数据列表中的哈希值是否已存在于数据库中，并返回未存在的数据项。
 
@@ -112,7 +115,7 @@ async def check_hash(data_list: list[HashContent]) -> list[HashContent]:
         return []
 
     # 计算所有Hash
-    data_with_hash = []
+    data_with_hash: list[HashContentWithHash] = []
     for item in data_list:
         content = json.dumps(item, sort_keys=True, ensure_ascii=False)
         hash_content = xxhash.xxh3_64_hexdigest(content.encode())
@@ -135,12 +138,12 @@ async def check_hash(data_list: list[HashContent]) -> list[HashContent]:
     return filtered_data
 
 
-async def save_hash(data_list: list[HashContent]) -> None:
+async def save_hash(data_list: list[str]) -> None:
     """
     将哈希数据批量保存到数据库中。
 
     参数:
-        data_list (list[HashContent]): 包含哈希内容的列表，每个元素应包含一个 "hash" 键。
+        data_list (list[HashContentWithHash]): 包含哈希内容的列表，每个元素应包含一个 "hash" 键。
 
     返回值:
         无返回值。
@@ -151,9 +154,9 @@ async def save_hash(data_list: list[HashContent]) -> None:
     """
     async with get_conn() as conn:
         now = datetime.now().isoformat()
-        await conn.executemany(
+        _ = await conn.executemany(
             "INSERT INTO hash (hash, create_at) VALUES (?, ?)",
-            [(each.get("hash"), now) for each in data_list],
+            [(each, now) for each in data_list],
         )
 
 
@@ -182,7 +185,7 @@ async def get_update_time(stocks: list[str], key: KEYS) -> dict[str, NotionDate 
         missing_stocks = [stock for stock in stocks if stock not in result_dict]
 
         if missing_stocks:
-            await conn.executemany(
+            _ = await conn.executemany(
                 "INSERT INTO update_records (stock, key, update_time) VALUES (?, ?, NULL)",
                 tuple((stock, key) for stock in missing_stocks),
             )

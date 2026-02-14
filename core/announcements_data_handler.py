@@ -1,14 +1,18 @@
+from core.data.announcement import Announcement
+from core.db import HashContentWithHash
+
 import asyncio
+
 from collections import defaultdict
 from datetime import date
 
 from dateutil.relativedelta import relativedelta
 from loguru import logger
 
-from core.notion.upload_file import FileUploadWithContent
+from core.notion.upload_file import FileUploadWithContent, FileUploaded
 
 from .data import get_announcements, split_pdf
-from .db import check_hash, get_update_time, save_hash, set_update_time
+from .db import HashContent, check_hash, get_update_time, save_hash, set_update_time
 from .notion import (
     FileUpload,
     StockPool,
@@ -37,18 +41,23 @@ async def process_announcements_data_for_stock_list(
     # 该事件将作为最后更新时间
     today = date.today()
 
+    # 初始化tasks
+    tasks: list[asyncio.Task[list[Announcement]]] = []
+
     # 对于更新时间为空的股票，默认从一年前开始
     init_update_stocks = [key for key, value in update_times.items() if value is None]
+    if init_update_stocks:
+        start_date = today - relativedelta(years=1)
+        end_date = today + relativedelta(days=1)
 
-    start_date = today - relativedelta(years=1)
-    end_date = today + relativedelta(days=1)
-
-    tasks = [
-        asyncio.create_task(get_announcements(init_update_stocks, start_date, end_date))
-    ]
+        tasks = [
+            asyncio.create_task(
+                get_announcements(init_update_stocks, start_date, end_date)
+            )
+        ]
 
     # 对于有更新时间的股票，则分组完成（巨潮资讯网的接口可以同时查询多支股票，合并可以降低访问次数，对于日更的部分，可以每日只批量更一次）
-    group: defaultdict[date, list[str]] = defaultdict(list)
+    group = defaultdict[date, list[str]](list)
     exist_update_stocks = {
         key: cover_notion_date_to_datetime(value)
         for key, value in update_times.items()
@@ -75,19 +84,19 @@ async def process_announcements_data_for_stock_list(
         return
 
     # 构建去重内容列表
-    hash_contents = [
-        {
-            "data_type": "announcements",
-            "content": f"{ann.stock}-{ann.id}-{ann.title}",
-        }
+    hash_contents: list[HashContent] = [
+        HashContent(
+            data_type="announcements",
+            content=f"{ann.stock}-{ann.id}-{ann.title}",
+        )
         for ann in announcements
     ]
 
     # 检查 hash 去重
     # check_hash 会返回新列表，包含 hash 字段，仅包含未存在的元素
-    filtered_hash_contents = await check_hash(hash_contents)
+    filtered_hash_contents: list[HashContentWithHash] = await check_hash(hash_contents)
     task_logger.info(
-        "公告数据去重完成，去重前{}, 去重后{}",
+        "公告数据增量更新，去重前{}, 去重后{}",
         len(hash_contents),
         len(filtered_hash_contents),
     )
@@ -97,41 +106,49 @@ async def process_announcements_data_for_stock_list(
         task_logger.info("所有公告都已存在，跳过处理")
         return
 
-    # 构建需要保留的 content 集合（用 content 而不是 hash 来匹配）
+    # 构建需要保留的 content 集合
     filtered_contents = {item["content"] for item in filtered_hash_contents}
 
     # 过滤公告列表：只保留 content 在 filtered_contents 中的公告
-    filtered_announcements = [
-        ann
+    filtered_announcements: list[tuple[Announcement, str]] = [
+        (ann, hc["content"])
         for ann, hc in zip(announcements, hash_contents)
         if hc["content"] in filtered_contents
     ]
 
+    # hash和content对照表
+    hash_content_map = {
+        each["content"]: each["hash"] for each in filtered_hash_contents
+    }
+
     # 更新变量指向
-    announcements = filtered_announcements
+    announcements = [
+        (each[0], hash_content_map[each[1]]) for each in filtered_announcements
+    ]
 
     # 上传附件
     file_uploads = [
         FileUpload(
-            url=announcement.url,
-            title=announcement.title,
-            stock=announcement.stock,
-            published_date=announcement.published_date,
+            url=announcement[0].url,
+            title=announcement[0].title,
+            stock=announcement[0].stock,
+            published_date=announcement[0].published_date,
+            hash_content=announcement[1],
         )
         for announcement in announcements
-        if announcement.size <= 1000
-        or not any(kw in announcement.title for kw in SPLIT_KEYWORDS)
+        if announcement[0].size <= 1000
+        or not any(kw in announcement[0].title for kw in SPLIT_KEYWORDS)
     ]
 
     # 外链上传任务
-    extend_task = asyncio.create_task(upload_files_with_url(file_uploads))
+    external_task = asyncio.create_task(upload_files_with_url(file_uploads))
 
     # 对大于涉及的附件进行分页
     file_need_split = [
         announcement
         for announcement in announcements
-        if announcement.size > 1000
-        and any(kw in announcement.title for kw in SPLIT_KEYWORDS)
+        if announcement[0].size > 1000
+        and any(kw in announcement[0].title for kw in SPLIT_KEYWORDS)
     ]
 
     # 分割附件
@@ -139,11 +156,12 @@ async def process_announcements_data_for_stock_list(
     # 将分割后的 Announcement 对象转换为 FileUpload 格式
     splited_file_uploads = [
         FileUploadWithContent(
-            url=announcement.url,
-            title=announcement.title,
-            stock=announcement.stock,
-            published_date=announcement.published_date,
-            content=announcement.content,
+            url=announcement[0].url,
+            title=announcement[0].title,
+            stock=announcement[0].stock,
+            published_date=announcement[0].published_date,
+            content=announcement[0].content,
+            hash_content=announcement[1],
         )
         for announcement in splited
     ]
@@ -151,12 +169,41 @@ async def process_announcements_data_for_stock_list(
 
     # 上传至Notion
     external_uploaded, internal_uploaded = await asyncio.gather(
-        extend_task, internal_task
+        external_task, internal_task
     )
-    uploaded = external_uploaded + internal_uploaded
+
+    # 外部附件筛选
+    external: list[FileUploaded] = [
+        item for item in external_uploaded if item["successed"]
+    ]
+
+    # 失败附件
+    failed: list[FileUploaded] = [
+        each for each in external_uploaded if not each["successed"]
+    ]
+
+    # 本地附件筛选
+    internal: list[FileUploaded] = []
+
+    # 失败的附件筛选
+
+    # 筛选所有的附件
+    set_hash_content = {each["hash_content"] for each in internal_uploaded}
+    # 判断是否所有的都成功
+    for each_hash in set_hash_content:
+        hash_group = [
+            each for each in internal_uploaded if each["hash_content"] == each_hash
+        ]
+        if all(item["successed"] for item in hash_group):
+            internal.extend(hash_group)
+        else:
+            failed.extend(hash_group)
+
+    task_logger.error(f"上传失败附件：{failed}")
+    uploaded: list[FileUploaded] = external + internal
 
     # 创建页面任务列表
-    create_tasks = []
+    create_tasks: list[asyncio.Task[bool]] = []
 
     # 创建数据流任务
     for each in uploaded:
@@ -178,22 +225,25 @@ async def process_announcements_data_for_stock_list(
     # 收集创建结果
     create_results = await asyncio.gather(*create_tasks)
 
-    # 只保存创建成功的 hash
     success_hash_contents = [
-        filtered_hash_contents[i] for i, success in enumerate(create_results) if success
+        uploaded[i] for i, success in enumerate(create_results) if success
     ]
 
     if success_hash_contents:
-        await save_hash(success_hash_contents)
-        logger.info(f"成功创建 {len(success_hash_contents)} 条公告页面")
+        # 去重：PDF分割的多个部分有相同的hash_content，只保存一次
+        unique_hash_contents = list(
+            {each["hash_content"] for each in success_hash_contents}
+        )
+        await save_hash(unique_hash_contents)
+        task_logger.info(f"成功创建 {len(success_hash_contents)} 条公告页面")
 
     # 统计失败数量
     failed_count = len(create_results) - len(success_hash_contents)
     if failed_count > 0:
-        logger.error(f"创建失败 {failed_count} 条公告页面")
+        task_logger.error(f"创建失败 {failed_count} 条公告页面")
 
     # 更新每只股票的最后更新时间
-    for stock_code in set(ann.stock for ann in announcements):
+    for stock_code in set(ann[0].stock for ann in announcements):
         await set_update_time(
             stock_code,
             "announcements",

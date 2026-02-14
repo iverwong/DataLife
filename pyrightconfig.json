@@ -1,0 +1,9 @@
+{
+  "typeCheckingMode": "recommended",
+  "pythonVersion": "3.13",
+  "pythonPlatform": "Windows",
+  "venvPath": ".",
+  "venv": "venv",
+  "include": ["core", "tests", "scripts"],
+  "exclude": ["venv"]
+}

@@ -1,7 +1,9 @@
+from core.db import HashContentWithHash
+
+
 from datetime import datetime
 
 from loguru import logger
-
 from .data import get_business
 from .db import check_hash, get_update_time, save_hash, set_update_time
 from .models import NotionDate
@@ -11,6 +13,7 @@ from .notion import (
     cover_datetime_to_notion_date,
     create_dataflow_page,
 )
+from .db import HashContent
 
 
 async def process_business_data_for_stock_list(stock_list: list[StockPool]) -> None:
@@ -51,47 +54,50 @@ async def process_business_data_for_stock_list(stock_list: list[StockPool]) -> N
         business_data = await get_business(stock)
 
         # 构建去重内容
-        hash_content = {
-            "data_type": "business",
-            "content": f"{stock}-{business_data.report_date}-主营构成",
-        }
+        hash_content: HashContent = HashContent(
+            data_type="business",
+            content=f"{stock}-{business_data.report_date}-主营构成",
+        )
 
         # 检查是否已存在
-        filtered = await check_hash([hash_content])
+        filtered: list[HashContentWithHash] = await check_hash([hash_content])
         if not filtered:
             stock_task_logger.info("股票{}主营构成数据已存在，跳过创建页面", stock)
             continue
 
-        content.add_heading("按行业分类", level=3)
-        content.add_table_from_dataframe(business_data.industry_df)
-        content.add_heading("按产品分类", level=3)
-        content.add_table_from_dataframe(business_data.product_df)
-        content.add_heading("按地区分类", level=3)
-        content.add_table_from_dataframe(business_data.region_df)
+        content = (
+            content.add_heading("按行业分类", level=3)
+            .add_table_from_dataframe(business_data.industry_df)
+            .add_heading("按产品分类", level=3)
+            .add_table_from_dataframe(business_data.product_df)
+            .add_heading("按地区分类", level=3)
+            .add_table_from_dataframe(business_data.region_df)
+        )
 
-        payload = {
-            "title": f"{stock}-{business_data.report_date}-主营构成",
-            "published_date": business_data.report_date,
-            "source_api": f"{get_business.__module__}.{get_business.__name__}",
-            "data_type": "主营构成",
-            "relation": id,
-            "content": content.build(),
-        }
         notion_logger = stock_task_logger.bind(
             stock=stock, data_type="主营构成", published_date=business_data.report_date
         )
         notion_logger.info("开始创建{}-主营业务构成数据流页面", stock)
-        await create_dataflow_page(**payload)
-        notion_logger.success("成功创建{}-主营业务构成数据流页面", stock)
-
-        # 保存 hash
-        await save_hash(filtered)
-
-        await set_update_time(
-            stock,
-            "business",
-            update_time=cover_datetime_to_notion_date(business_data.report_date),
+        page_result = await create_dataflow_page(
+            title=f"{stock}-{business_data.report_date}-主营构成",
+            published_date=business_data.report_date,
+            source_api=f"{get_business.__module__}.{get_business.__name__}",
+            data_type="主营构成",
+            relation=id,
+            content=content.build(),
         )
+        if page_result:
+            notion_logger.success("成功创建{}-主营业务构成数据流页面", stock)
+
+            await save_hash([each["hash"] for each in filtered])
+
+            await set_update_time(
+                stock,
+                "business",
+                update_time=cover_datetime_to_notion_date(business_data.report_date),
+            )
+        else:
+            notion_logger.error("创建{}-主营业务构成数据流页面失败", stock)
 
 
 def _should_update_half_year(last_update_str: NotionDate | None):

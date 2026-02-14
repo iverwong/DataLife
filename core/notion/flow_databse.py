@@ -8,8 +8,28 @@ from typing import Literal
 
 from loguru import logger
 
-from . import notion
+from .client import notion
 from .datetime_helper import cover_datetime_to_notion_date
+from .models import (
+    Block,
+    CreatePageRequest,
+    DataSourceParent,
+    DatePropertyRequest,
+    DateValue,
+    FileItemUpload,
+    FileUploadReference,
+    FilesPropertyRequest,
+    PropertyValueRequest,
+    RelationItem,
+    RelationPropertyRequest,
+    RichTextInput,
+    RichTextPropertyRequest,
+    SelectOption,
+    SelectPropertyRequest,
+    TextContent,
+    TitlePropertyRequest,
+    UrlPropertyRequest,
+)
 from .retry_helper import with_retry
 
 TYPE_MAPPING = {
@@ -35,43 +55,56 @@ async def create_dataflow_page(
     relation: str,
     attachment_id: str | None = None,
     source_url: str | None = None,
-    content: list[dict] | None = None,
+    content: list[Block] | None = None,
 ) -> bool:
     """在资讯流数据库中创建一个页面
-    :param title: 标题
-    :param published_date: 发布时间
-    :param source_api: 来源接口
-    :param data_type: 数据类型
-    :param relation: 关联股票
-    :param attachment_url: 附件链接
-    :param source_url: 原文链接
-    :param content: 正文内容
-    :return: 创建成功返回 True，失败返回 False
+
+    Args:
+        title: 标题
+        published_date: 发布时间
+        source_api: 来源接口
+        data_type: 数据类型
+        relation: 关联股票
+        attachment_id: 附件 file_upload ID
+        source_url: 原文链接
+        content: 正文内容（Block 列表）
+
+    Returns:
+        创建成功返回 True，失败返回 False
     """
-    properties = {
-        "标题": {"title": [{"text": {"content": title}}]},
-        "发布时间": {"date": {"start": cover_datetime_to_notion_date(published_date)}},
-        "来源接口": {"rich_text": [{"text": {"content": source_api}}]},
-        "数据类型": {"select": {"id": TYPE_MAPPING[data_type]}},
-        "关联股票": {"relation": [{"id": relation}]},
+    properties: dict[str, PropertyValueRequest] = {
+        "标题": TitlePropertyRequest(
+            title=[RichTextInput(text=TextContent(content=title))]
+        ),
+        "发布时间": DatePropertyRequest(
+            date=DateValue(start=cover_datetime_to_notion_date(published_date))
+        ),
+        "来源接口": RichTextPropertyRequest(
+            rich_text=[RichTextInput(text=TextContent(content=source_api))]
+        ),
+        "数据类型": SelectPropertyRequest(
+            select=SelectOption(id=TYPE_MAPPING[data_type])
+        ),
+        "关联股票": RelationPropertyRequest(relation=[RelationItem(id=relation)]),
     }
     if source_url:
-        properties["原文链接"] = {"url": source_url}
+        properties["原文链接"] = UrlPropertyRequest(url=source_url)
     if attachment_id:
-        properties["附件"] = {"files": [{"file_upload": {"id": attachment_id}}]}
-    try:
-        # 构建 create 参数，只在 content 不为 None 时传递 children
-        create_params = {
-            "parent": {"data_source_id": FLOW_DATABASE},
-            "properties": properties,
-        }
-        if content is not None:
-            create_params["children"] = content
-        notion_logger = logger.bind(
-            parent_id=FLOW_DATABASE, title=title, data_type=data_type
+        properties["附件"] = FilesPropertyRequest(
+            files=[FileItemUpload(file_upload=FileUploadReference(id=attachment_id))]
         )
+    notion_logger = logger.bind(
+        parent_id=FLOW_DATABASE, title=title, data_type=data_type
+    )
+    try:
+        request = CreatePageRequest(
+            parent=DataSourceParent(data_source_id=FLOW_DATABASE or ""),
+            properties=properties,
+            children=content,
+        )
+
         notion_logger.info("开始在Notion中创建页面")
-        await notion.pages.create(**create_params)
+        await notion.pages.create(**request.model_dump(exclude_none=True))
         notion_logger.success("成功在Notion中创建页面")
         return True
     except Exception:

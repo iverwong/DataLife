@@ -1,10 +1,11 @@
-import datetime
 from dataclasses import dataclass
 from datetime import date, datetime
 from functools import lru_cache
 
 import httpx
 from loguru import logger
+
+from .models import AnnouncementItem, AnnouncementsResponse, StockListResponse
 
 
 @dataclass(frozen=True)
@@ -34,7 +35,25 @@ class Announcement:
 
 @dataclass(frozen=True)
 class AnnouncementWithContent(Announcement):
-    content: bytes
+    """带有文件二进制内容的公告"""
+
+    content: bytes = b""
+
+
+CNINFO_BASE_URL = "https://static.cninfo.com.cn/"
+FILTERED_KEYWORDS = ["摘要", "英文", "图文版"]
+
+
+def _convert_item_to_announcement(item: AnnouncementItem) -> Announcement:
+    """将 API 响应中的 AnnouncementItem 转换为 Announcement 数据类"""
+    return Announcement(
+        id=item.announcementId,
+        stock=item.secCode,
+        title=f"{item.secName}({item.secCode})-{item.announcementTitle}",
+        size=item.adjunctSize,
+        url=f"{CNINFO_BASE_URL}{item.adjunctUrl}",
+        published_date=datetime.fromtimestamp(item.announcementTime / 1000),
+    )
 
 
 async def get_announcements(
@@ -54,13 +73,13 @@ async def get_announcements(
         list[Announcement]: 包含公告信息的列表，每个元素为Announcement对象，
                             包括公告ID、股票代码、标题、文件大小、下载链接和发布时间等信息。
     """
+
+    if len(stock_list) == 0:
+        logger.warning("股票列表为空，跳过获取公告信息")
+        return []
     task_logger = logger.bind(
         stock_list=stock_list, start_date=start_date, end_date=end_date
     )
-
-    if len(stock_list) == 0:
-        task_logger.warning("股票列表为空，跳过获取公告信息")
-        return []
     task_logger.info("开始获取公告信息：{}", stock_list)
 
     url = "http://www.cninfo.com.cn/new/hisAnnouncement/query"
@@ -89,62 +108,52 @@ async def get_announcements(
         task_logger.info("开始发送获取公告请求")
         res = await client.post(url, params=payload)
         try:
-            res.raise_for_status()
+            _ = res.raise_for_status()
         except httpx.HTTPStatusError:
             task_logger.exception("获取公告请求失败")
         task_logger.success("公告首页请求成功")
-        response = res.json()
+        first_page = AnnouncementsResponse.model_validate(res.json())
+
+        if first_page.totalAnnouncement == 0:
+            task_logger.info(f"没有获取到{stock_list}的公告信息")
+            return []
 
         # 处理 announcements 为 None 的情况
-        announcements_data = response.get("announcements") or []
-        announcements = [*announcements_data]
+        announcements: list[AnnouncementItem] = list(first_page.announcements or [])
         # 使用接口返回的totalpages参数获取**剩余**页数
-        page_count = response.get("totalpages", 0)
+        page_count = first_page.totalpages
 
         task_logger.info(
             "API返回公告数量:{},总页数:{}",
             len(announcements),
             page_count,
         )
-
         for i in range(page_count):
             payload["pageNum"] = str(i + 2)
             task_logger.info("开始获取第{}页公告请求", i + 2)
             res = await client.post(url, params=payload)
             task_logger.info("第{}页公告请求成功", i + 2)
-            response = res.json()
-            page_announcements = response.get("announcements") or []
-            announcements.extend(page_announcements)
+            page = AnnouncementsResponse.model_validate(res.json())
+            announcements.extend(page.announcements or [])
 
     # 将report中的摘要、英文版、图文版之类的筛选掉
     before_filter_count = len(announcements)
-    filtered_keywords = ["摘要", "英文", "图文版"]
-    announcements = [
-        each
-        for each in announcements
-        if not any(kw in each["announcementTitle"] for kw in filtered_keywords)
+    filtered = [
+        item
+        for item in announcements
+        if not any(kw in item.announcementTitle for kw in FILTERED_KEYWORDS)
     ]
     task_logger.info(
-        f"公告关键字过滤，过滤前: {before_filter_count}, 过滤后: {len(announcements)}"
+        f"公告关键字过滤，过滤前: {before_filter_count}, 过滤后: {len(filtered)}"
     )
 
-    result = [
-        Announcement(
-            each["announcementId"],
-            each["secCode"],
-            f"{each['secName']}({each['secCode']})-{each['announcementTitle']}",
-            each["adjunctSize"],
-            f"https://static.cninfo.com.cn/{each['adjunctUrl']}",
-            datetime.fromtimestamp(each["announcementTime"] / 1000),
-        )
-        for each in announcements
-    ]
+    result = [_convert_item_to_announcement(item) for item in filtered]
     task_logger.success("公告信息获取完成，共{}条", len(result))
     return result
 
 
 @lru_cache()
-async def _get_stock_json(symbol: str = "沪深京") -> dict:
+async def _get_stock_json(symbol: str = "沪深京") -> dict[str, str]:
     """
     获取指定股票类型的JSON数据并解析为字典格式。
 
@@ -166,6 +175,5 @@ async def _get_stock_json(symbol: str = "沪深京") -> dict:
         raise ValueError("不受支持的股票类型！")
     async with httpx.AsyncClient() as client:
         response = await client.get(url)
-    text_json = response.json()
-    stock_list = text_json["stockList"]
-    return {stock["code"]: stock["orgId"] for stock in stock_list}
+    stock_data = StockListResponse.model_validate(response.json())
+    return {stock.code: stock.orgId for stock in stock_data.stockList}
