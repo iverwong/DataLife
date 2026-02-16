@@ -198,8 +198,9 @@ async def process_announcements_data_for_stock_list(
             internal.extend(hash_group)
         else:
             failed.extend(hash_group)
+    if failed:
+        task_logger.error(f"上传失败附件：{failed}")
 
-    task_logger.error(f"上传失败附件：{failed}")
     uploaded: list[FileUploaded] = external + internal
 
     # 创建页面任务列表
