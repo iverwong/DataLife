@@ -126,7 +126,7 @@ async def process_announcements_data_for_stock_list(
         (each[0], hash_content_map[each[1]]) for each in filtered_announcements
     ]
 
-    # 上传附件
+    # 上传附件（附件大小小于200K，且不包含关键字）
     file_uploads = [
         FileUpload(
             url=announcement[0].url,
@@ -136,8 +136,8 @@ async def process_announcements_data_for_stock_list(
             hash_content=announcement[1],
         )
         for announcement in announcements
-        if announcement[0].size <= 1000
-        or not any(kw in announcement[0].title for kw in SPLIT_KEYWORDS)
+        if announcement[0].size <= 200
+        and not any(kw in announcement[0].title for kw in SPLIT_KEYWORDS)
     ]
 
     # 外链上传任务
@@ -147,8 +147,8 @@ async def process_announcements_data_for_stock_list(
     file_need_split = [
         announcement
         for announcement in announcements
-        if announcement[0].size > 1000
-        and any(kw in announcement[0].title for kw in SPLIT_KEYWORDS)
+        if announcement[0].size > 200
+        or any(kw in announcement[0].title for kw in SPLIT_KEYWORDS)
     ]
 
     # 分割附件

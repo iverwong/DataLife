@@ -6,8 +6,8 @@ from loguru import logger
 from typing import cast
 from .announcement import Announcement, AnnouncementWithContent
 
-CHUNK_SIZE = 95
-REP_SIZE = 5
+CHUNK_SIZE = 30
+REP_SIZE = 3
 
 
 def split_pdf(
@@ -37,8 +37,8 @@ def split_pdf(
 
             # 如果页数较少，作为一个整体处理
             if page_count <= CHUNK_SIZE:
-                # 直接创建一个公告对象，添加页码信息
-                new_title = f"{announcement[0].title}(P1-P{page_count})"
+                # 直接创建一个公告对象，不再添加页码信息
+                new_title = f"{announcement[0].title}"
                 new_announcement = (
                     AnnouncementWithContent(
                         id=announcement[0].id,  # 保持原始ID不变
