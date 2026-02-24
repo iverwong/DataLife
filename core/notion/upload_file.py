@@ -111,23 +111,29 @@ async def _upload_internal_and_wait(
     )
 
     # 开始上传
-    send_result = FileUploadResponse.model_validate(
-        await notion.file_uploads.send(
+    try:
+        send_raw = await notion.file_uploads.send(  # pyright: ignore[reportAny]
             file_id,
             file=(file_info["title"] + ".PDF", file_info["content"], "application/pdf"),
         )
-    )
-
-    if send_result.status == "uploaded":
-        file_successed = True
-        file_error = None
-        task_logger.success(f"上传文件 {file_info['title']} 成功")
-    else:
+        send_result = FileUploadResponse.model_validate(send_raw)
+        if send_result.status == "uploaded":
+            file_successed = True
+            file_error = None
+            task_logger.success(f"上传文件 {file_info['title']} 成功")
+        else:
+            file_successed = False
+            file_error = (
+                attrgetter("file_import_result.error.message")(send_result)
+                or "未知错误"
+            )
+            task_logger.error(
+                f"上传文件 {file_info['title']} 失败，响应为{send_result}"
+            )
+    except Exception as e:
+        task_logger.error(f"上传文件 {file_info['title']} 失败，错误为{e}")
         file_successed = False
-        file_error = (
-            attrgetter("file_import_result.error.message")(send_result) or "未知错误"
-        )
-        task_logger.error(f"上传文件 {file_info['title']} 失败，响应为{send_result}")
+        file_error = str(e)
 
     return [
         FileUploaded(
@@ -214,44 +220,50 @@ async def _upload_external_and_wait(file_info: FileUpload) -> FileUploaded:
     task_logger = logger.bind(file_info=file_info)
     # 创建上传
     task_logger.info("上传外部文件：{} ({})", file_info["title"], file_info["url"])
-    create_response = FileUploadResponse.model_validate(
-        await notion.file_uploads.create(
+    try:
+        create_raw = await notion.file_uploads.create(  # pyright: ignore[reportAny]
             mode="external_url",
             filename=file_info["title"] + ".PDF",
             external_url=file_info["url"],
         )
-    )
-    file_id = create_response.id
-    task_logger.info("外部文件创建成功，id={}，开始轮询", file_id)
+        create_response = FileUploadResponse.model_validate(create_raw)
+        file_id = create_response.id
+        task_logger.info("外部文件创建成功，id={}，开始轮询", file_id)
 
-    # 轮询直到完成
-    poll_result = await _poll_upload_status(file_id, file_info["title"])
+        # 轮询直到完成
+        poll_result = await _poll_upload_status(file_id, file_info["title"])
 
-    # 返回结果
-    if poll_result.status == "uploaded":
-        task_logger.success(f"✓ {file_info['title']} 上传成功")
-        return FileUploaded(**file_info, file_id=file_id, successed=True, error=None)
-    else:
-        file_import_result = poll_result.file_import_result
-        if file_import_result:
-            if isinstance(file_import_result, FileImportError):
-                error_msg = file_import_result.error.message
-            else:
-                task_logger.error(
-                    f"收到了状态不为 `uploaded` 但文件导入结果不为 `error` 的报文：{poll_result}"
-                )
-                raise TypeError(
-                    "收到了状态不为 `uploaded` 但文件导入结果不为 `error` 的报文"
-                )
+        # 返回结果
+        if poll_result.status == "uploaded":
+            task_logger.success(f"✓ {file_info['title']} 上传成功")
+            return FileUploaded(
+                **file_info, file_id=file_id, successed=True, error=None
+            )
         else:
-            error_msg = "轮询超时"
-        task_logger.error(f"✗ {file_info['title']} 上传失败: {error_msg}")
-        return FileUploaded(
-            **file_info,
-            file_id=file_id,
-            successed=False,
-            error=error_msg,
-        )
+            file_import_result = poll_result.file_import_result
+            if file_import_result:
+                if isinstance(file_import_result, FileImportError):
+                    error_msg = file_import_result.error.message
+                else:
+                    task_logger.error(
+                        f"收到了状态不为 `uploaded` 但文件导入结果不为 `error` 的报文：{poll_result}"
+                    )
+                    raise TypeError(
+                        "收到了状态不为 `uploaded` 但文件导入结果不为 `error` 的报文"
+                    )
+            else:
+                error_msg = "轮询超时"
+            task_logger.error(f"✗ {file_info['title']} 上传失败: {error_msg}")
+            return FileUploaded(
+                **file_info,
+                file_id=file_id,
+                successed=False,
+                error=error_msg,
+            )
+
+    except Exception as e:
+        task_logger.error(f"创建外部文件上传任务失败，错误为{e}")
+        return FileUploaded(**file_info, file_id="", successed=False, error=str(e))
 
 
 @with_retry()

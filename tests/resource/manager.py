@@ -69,10 +69,11 @@ class ResourceMeta:
     def from_dict(cls, data: dict[str, object]) -> ResourceMeta:
         """从字典创建"""
         raw_tags = data.get("tags", [])
-        tags = tuple(str(t) for t in raw_tags) if isinstance(raw_tags, list) else ()  # pyright: ignore[reportUnknownArgumentType]
+        tags = tuple(str(t) for t in raw_tags) if isinstance(raw_tags, list) else ()
+        resource_type_str = str(data.get("resource_type", "PICKLE"))
         return cls(
             name=str(data["name"]),
-            resource_type=ResourceType[str(data["resource_type"])],
+            resource_type=ResourceType[resource_type_str],
             version=str(data.get("version", "1.0.0")),
             created_at=str(data.get("created_at", datetime.now().isoformat())),
             description=str(data.get("description", "")),
@@ -243,7 +244,8 @@ class ResourceManager:
             raise FileNotFoundError(f"资源元数据不存在: {meta_path}")
 
         with open(meta_path, "r", encoding="utf-8") as f:
-            meta = ResourceMeta.from_dict(json.load(f))  # pyright: ignore[reportAny]
+            meta_data: dict[str, object] = json.load(f)
+            meta = ResourceMeta.from_dict(meta_data)
 
         # 加载数据
         pickle_path = self._get_pickle_path(name)
@@ -251,7 +253,7 @@ class ResourceManager:
             raise FileNotFoundError(f"资源数据不存在: {pickle_path}")
 
         with open(pickle_path, "rb") as f:
-            data: object = pickle.load(f)  # pyright: ignore[reportAny] # noqa: S301
+            data: object = pickle.load(f)  # noqa: S301
 
         resource_obj: StaticResource[object] = StaticResource(meta=meta, data=data)
 
@@ -275,7 +277,8 @@ class ResourceManager:
         """仅获取资源元数据"""
         meta_path = self._get_meta_path(name)
         with open(meta_path, "r", encoding="utf-8") as f:
-            return ResourceMeta.from_dict(json.load(f))  # pyright: ignore[reportAny]
+            meta_data: dict[str, object] = json.load(f)
+            return ResourceMeta.from_dict(meta_data)
 
     def list_resources(self) -> list[str]:
         """列出所有资源名称"""

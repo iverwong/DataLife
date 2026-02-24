@@ -6,8 +6,8 @@ from loguru import logger
 from typing import cast
 from .announcement import Announcement, AnnouncementWithContent
 
-CHUNK_SIZE = 30
-REP_SIZE = 3
+CHUNK_SIZE = 20
+REP_SIZE = 2
 
 
 def split_pdf(
