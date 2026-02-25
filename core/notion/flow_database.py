@@ -1,5 +1,7 @@
-"""
-资讯流数据库的相关操作
+"""资讯流数据库操作模块。
+
+提供在 Notion 资讯流数据库中创建数据流页面的功能，
+支持多种属性（标题、日期、类型、关联、附件等）和正文内容块。
 """
 
 import os
@@ -9,7 +11,7 @@ from typing import Literal
 from loguru import logger
 
 from .client import notion
-from .datetime_helper import cover_datetime_to_notion_date
+from .datetime_helper import convert_datetime_to_notion_date
 from .models import (
     Block,
     CreatePageRequest,
@@ -41,6 +43,8 @@ TYPE_MAPPING = {
 }
 
 FLOW_DATABASE = os.getenv("FLOW_DATABASE")
+if not FLOW_DATABASE:
+    logger.warning("环境变量 FLOW_DATABASE 未配置，资讯流数据库操作将失败")
 
 
 DataType = Literal["新闻资讯", "公告披露", "财务数据", "研究报告", "主营构成"]
@@ -77,7 +81,7 @@ async def create_dataflow_page(
             title=[RichTextInput(text=TextContent(content=title))]
         ),
         "发布时间": DatePropertyRequest(
-            date=DateValue(start=cover_datetime_to_notion_date(published_date))
+            date=DateValue(start=convert_datetime_to_notion_date(published_date))
         ),
         "来源接口": RichTextPropertyRequest(
             rich_text=[RichTextInput(text=TextContent(content=source_api))]

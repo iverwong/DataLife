@@ -1,5 +1,6 @@
-"""
-主营业务构成
+"""AkShare 主营业务构成数据采集模块。
+
+从东方财富 AkShare 接口获取上市公司主营构成数据（分行业、分产品、分地区）。
 """
 
 import asyncio
@@ -24,14 +25,13 @@ _BUSINESS_COLUMNS = [
 
 @dataclass(frozen=True)
 class BusinessData:
-    """
-    定义一个命名元组类，用于存储业务数据的相关信息。
+    """主营业务构成数据。
 
-    参数:
-        report_date (date): 报告日期，表示数据所属的时间点。
-        industry_df (DataFrame): 行业相关数据的DataFrame，包含行业维度的业务指标。
-        product_df (DataFrame): 产品相关数据的DataFrame，包含产品维度的业务指标。
-        region_df (DataFrame): 区域相关数据的DataFrame，包含区域维度的业务指标。
+    Attributes:
+        report_date: 报告日期。
+        industry_df: 按行业分类的数据。
+        product_df: 按产品分类的数据。
+        region_df: 按地区分类的数据。
     """
 
     report_date: date
@@ -41,14 +41,16 @@ class BusinessData:
 
 
 async def get_business(stock_code: str) -> BusinessData:
-    """
-    获取指定股票代码的主营业务构成数据。
+    """获取指定股票的主营业务构成数据。
 
-    参数:
-        stock_code (str): 股票代码，用于标识具体的上市公司。
+    根据股票代码判断市场（0/3 开头为深市，否则为沪市），
+    调用 AkShare 接口获取最新报告期的分行业、分产品、分地区数据。
 
-    返回:
-        BusinessData: 包含主营业务构成数据的对象，包括报告日期、分行业数据、分产品数据和分地区数据。
+    Args:
+        stock_code: 六位股票代码。
+
+    Returns:
+        包含最新报告期主营构成数据的 BusinessData 对象。
     """
     stock_logger = logger.bind(stock_code=stock_code)
     # 根据股票代码确定请求参数

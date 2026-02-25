@@ -27,16 +27,14 @@ async def main() -> None:
     stock_list = await get_stock_pool()
 
     # 处理主营构成数据
-    from core.business_data_handler import process_business_data_for_stock_list
+    from core.handlers.business import process_business_data_for_stock_list
 
     await process_business_data_for_stock_list(stock_list)
 
     # 处理巨潮公告
-    from core.announcements_data_handler import (
-        process_announcements_data_for_stock_list,
-    )
+    from core.handlers.announcements import process_announcements_for_stock_list
 
-    await process_announcements_data_for_stock_list(stock_list)
+    await process_announcements_for_stock_list(stock_list)
 
     await logger.complete()
 

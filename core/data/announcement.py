@@ -1,3 +1,8 @@
+"""巨潮资讯网公告数据采集模块。
+
+从巨潮资讯网 API 查询上市公司公告，支持分页获取和关键词过滤。
+"""
+
 from dataclasses import dataclass
 from datetime import date, datetime
 from functools import lru_cache
@@ -10,19 +15,15 @@ from .models import AnnouncementItem, AnnouncementsResponse, StockListResponse
 
 @dataclass(frozen=True)
 class Announcement:
-    """
-    表示一个公告信息的命名元组类。
+    """巨潮资讯网公告信息。
 
-    该类用于存储与公告相关的基本信息，包括公告的唯一标识、所属股票、标题、
-    文件大小、下载链接以及发布时间等字段。
-
-    属性:
-        id (str): 巨潮资讯网公告的唯一标识符。
-        stock (str): 公告所属的股票代码或名称。
-        title (str): 公告的标题。
-        size (int): 公告文件的大小（KB）。
-        url (str): 公告文件的下载链接。
-        published_date (datetime): 公告的发布日期和时间。
+    Attributes:
+        id: 巨潮资讯网公告的唯一标识符。
+        stock: 公告所属的股票代码。
+        title: 公告标题。
+        size: 公告文件大小（KB）。
+        url: 公告文件的下载链接。
+        published_date: 公告发布日期。
     """
 
     id: str
@@ -35,7 +36,11 @@ class Announcement:
 
 @dataclass(frozen=True)
 class AnnouncementWithContent(Announcement):
-    """带有文件二进制内容的公告"""
+    """带有文件二进制内容的公告。
+
+    Attributes:
+        content: PDF 文件的二进制内容，默认为空字节。
+    """
 
     content: bytes = b""
 
@@ -61,17 +66,20 @@ async def get_announcements(
     start_date: date,
     end_date: date,
 ) -> list[Announcement]:
-    """
-    获取指定股票列表在给定日期范围内的公告信息。
+    """获取指定股票列表在给定日期范围内的公告信息。
 
-    参数:
-        stock_list (list[str]): 股票代码列表，用于查询相关公告。
-        start_date (date): 查询公告的起始日期。
-        end_date (date): 查询公告的结束日期。
+    从巨潮资讯网 API 分页查询公告，并过滤掉摘要、英文版和图文版等非主体公告。
 
-    返回:
-        list[Announcement]: 包含公告信息的列表，每个元素为Announcement对象，
-                            包括公告ID、股票代码、标题、文件大小、下载链接和发布时间等信息。
+    Args:
+        stock_list: 股票代码列表。
+        start_date: 查询起始日期。
+        end_date: 查询结束日期。
+
+    Returns:
+        过滤后的公告信息列表。
+
+    Raises:
+        httpx.HTTPStatusError: API 请求返回非 2xx 状态码。
     """
 
     if len(stock_list) == 0:
@@ -111,6 +119,7 @@ async def get_announcements(
             _ = res.raise_for_status()
         except httpx.HTTPStatusError:
             task_logger.exception("获取公告请求失败")
+            return []
         task_logger.success("公告首页请求成功")
         first_page = AnnouncementsResponse.model_validate(res.json())
 
@@ -154,16 +163,17 @@ async def get_announcements(
 
 @lru_cache()
 async def _get_stock_json(symbol: str = "沪深京") -> dict[str, str]:
-    """
-    获取指定股票类型的JSON数据并解析为字典格式。
+    """获取巨潮资讯网股票代码到机构 ID 的映射。
 
-    参数:
-        symbol (str): 股票类型，默认为"沪深京"。目前仅支持"沪深京"类型。
+    使用 lru_cache 缓存结果，避免重复请求。
 
-    返回:
-        dict: 以股票代码为键、机构ID为值的字典。
+    Args:
+        symbol: 股票市场类型，目前仅支持"沪深京"。
 
-    异常:
+    Returns:
+        以股票代码为键、机构 ID 为值的字典。
+
+    Raises:
         ValueError: 当传入不支持的股票类型时抛出。
     """
     if symbol == "沪深京":

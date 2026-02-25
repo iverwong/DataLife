@@ -61,7 +61,7 @@ def with_retry(
     ) -> Callable[P, Coroutine[None, None, T]]:
         @functools.wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            last_exception = Exception
+            last_exception: Exception = Exception("No attempts made")
             for attempt in range(max_retries + 1):
                 try:
                     if attempt > 0:

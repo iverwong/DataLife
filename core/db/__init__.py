@@ -1,52 +1,67 @@
+"""本地 SQLite 数据库操作模块。
+
+提供更新时间管理和基于 xxhash 的去重哈希功能，所有写操作通过事务保证原子性。
+"""
+
 import json
 import os
 from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal, TypedDict
 
 import aiosqlite
 import xxhash
 from loguru import logger
 
-from ..models import NotionDate
+from ..models import NotionDate, UpdateRecordKey
 
 db_dir = os.path.dirname(os.path.abspath(__file__))
 db_path = os.path.join(db_dir, "notion.db")
 
-# 配置项中需要更新的键
-KEYS = Literal["business", "announcements"]
 
+@dataclass(frozen=True)
+class HashContent:
+    """去重哈希的输入内容。
 
-class HashContent(TypedDict):
+    Attributes:
+        data_type: 数据类型标识（如 "announcements"、"business"）。
+        content: 用于计算哈希的原始内容字符串。
+    """
+
     data_type: str
     content: str
 
 
-class HashContentWithHash(HashContent):
-    hash: str
+@dataclass(frozen=True)
+class HashContentWithHash:
+    """带有计算后哈希值的去重内容。
+
+    Attributes:
+        data_type: 数据类型标识。
+        content: 用于计算哈希的原始内容字符串。
+        hash_value: 基于内容计算的 xxhash 值。
+    """
+
+    data_type: str
+    content: str
+    hash_value: str
 
 
-db = None
+db: aiosqlite.Connection | None = None
 
 
 @asynccontextmanager
-async def get_conn():
-    """
-    异步上下文管理器函数，用于获取 SQLite 数据库连接。
-    该函数通过上下文管理器的方式管理数据库连接的生命周期，确保在使用完毕后正确提交事务或回滚，
-    并关闭数据库连接。适用于需要安全操作数据库的场景。
+async def get_conn() -> AsyncIterator[aiosqlite.Connection]:
+    """获取数据库连接的异步上下文管理器。
 
-    使用方式：
-        async with get_conn() as conn:
-            # 在此处执行数据库操作
-            cursor = await conn.execute('SELECT * FROM table')
-            result = await cursor.fetchall()
+    使用全局单例连接，在上下文结束时自动提交事务，
+    异常时自动回滚。
 
-    注意事项：
-        - 如果在使用过程中发生异常，事务会自动回滚。
-        - 无论是否发生异常，连接都会在最后被关闭。
+    Yields:
+        活跃的数据库连接。
     """
-    conn = db or await _get_db()
+    conn = await _get_db()
     try:
         yield conn
         await conn.commit()
@@ -55,7 +70,8 @@ async def get_conn():
         raise
 
 
-async def _get_db():
+async def _get_db() -> aiosqlite.Connection:
+    """获取或创建全局数据库连接。"""
     global db
     if db:
         return db
@@ -63,19 +79,10 @@ async def _get_db():
     return db
 
 
-async def init_db():
-    """
-    同步初始化数据库，创建所需的表结构。
+async def init_db() -> None:
+    """初始化数据库，创建所需的表结构。
 
-    该函数通过获取数据库连接，创建两个表：
-    1. `update_records` 表：用于存储股票更新记录，包含股票代码、键值和更新时间。
-    2. `hash`表：用于存储哈希值及其创建时间。
-
-    参数:
-        无
-
-    返回值:
-        无
+    创建 update_records（更新时间记录）和 hash（去重哈希）两张表。
     """
     logger.info("初始化数据库连接")
     conn = await _get_db()
@@ -101,56 +108,52 @@ async def init_db():
 
 
 async def check_hash(data_list: list[HashContent]) -> list[HashContentWithHash]:
-    """
-    检查数据列表中的哈希值是否已存在于数据库中，并返回未存在的数据项。
+    """检查数据列表中的哈希值是否已存在于数据库中，返回未存在的数据项。
 
-    参数:
-        data_list (list[HashContent]): 包含待检查数据的列表，每个元素应为可序列化的字典对象。
+    Args:
+        data_list: 待检查的哈希内容列表。
 
-    返回:
-        list: 过滤后的数据列表，仅包含哈希值未在数据库中存在的数据项。
+    Returns:
+        仅包含数据库中尚未存在的数据项（附带计算后的哈希值）。
     """
-    # 如果数据列表为空，直接返回空列表
     if not data_list:
         return []
 
-    # 计算所有Hash
+    # 计算所有 Hash
     data_with_hash: list[HashContentWithHash] = []
     for item in data_list:
-        content = json.dumps(item, sort_keys=True, ensure_ascii=False)
-        hash_content = xxhash.xxh3_64_hexdigest(content.encode())
-        data_with_hash.append({**item, "hash": hash_content})
+        content = json.dumps(
+            {"data_type": item.data_type, "content": item.content},
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        hash_value = xxhash.xxh3_64_hexdigest(content.encode())
+        data_with_hash.append(
+            HashContentWithHash(
+                data_type=item.data_type,
+                content=item.content,
+                hash_value=hash_value,
+            )
+        )
 
-    # 在数据库中查询
+    # 在数据库中查询已存在的哈希
     async with get_conn() as conn:
         placeholder = ",".join("?" * len(data_with_hash))
         result = await conn.execute_fetchall(
-            f"""
-            SELECT hash FROM hash WHERE hash IN ({placeholder})
-            """,
-            tuple(each.get("hash") for each in data_with_hash),
+            f"SELECT hash FROM hash WHERE hash IN ({placeholder})",
+            tuple(each.hash_value for each in data_with_hash),
         )
         exist = {row[0] for row in result}
 
-    # 去重
-    filtered_data = [each for each in data_with_hash if each["hash"] not in exist]
-
-    return filtered_data
+    # 过滤出不存在的数据
+    return [each for each in data_with_hash if each.hash_value not in exist]
 
 
 async def save_hash(data_list: list[str]) -> None:
-    """
-    将哈希数据批量保存到数据库中。
+    """将哈希值批量保存到数据库中。
 
-    参数:
-        data_list (list[HashContentWithHash]): 包含哈希内容的列表，每个元素应包含一个 "hash" 键。
-
-    返回值:
-        无返回值。
-
-    功能说明:
-        该函数通过数据库连接，将传入的哈希数据列表批量插入到名为 "hash" 的表中。
-        每条记录包含哈希值和当前时间戳（ISO格式）。
+    Args:
+        data_list: 待保存的哈希值字符串列表。
     """
     async with get_conn() as conn:
         now = datetime.now().isoformat()
@@ -160,18 +163,15 @@ async def save_hash(data_list: list[str]) -> None:
         )
 
 
-async def get_update_time(stocks: list[str], key: KEYS) -> dict[str, NotionDate | None]:
-    """
-    根据给定的股票列表和键值，从数据库中获取每只股票的更新时间。
-    对于空的股票键值，将插入一条值为NULL的记录。
+async def get_update_time(stocks: list[str], key: UpdateRecordKey) -> dict[str, NotionDate | None]:
+    """获取股票列表的更新时间记录，对缺失记录自动插入 NULL 行。
 
-    参数:
-        stocks (list[str]): 股票代码列表，用于查询对应的更新时间。
-        key (KEYS): 键值，用于筛选特定类型的更新记录。
+    Args:
+        stocks: 股票代码列表。
+        key: 业务键类型。
 
-    返回:
-        dict[str, NotionDate | None]: 字典，键为股票代码，值为对应的更新时间（NotionDate类型），
-                                      如果未找到记录则返回None。
+    Returns:
+        字典，键为股票代码，值为对应的更新时间（可能为 None）。
     """
     async with get_conn() as conn:
         placeholder = ",".join("?" * len(stocks))
@@ -196,21 +196,17 @@ async def get_update_time(stocks: list[str], key: KEYS) -> dict[str, NotionDate 
 
 
 async def set_update_time(
-    stock: str, key: KEYS, update_time: NotionDate | None
+    stock: str, key: UpdateRecordKey, update_time: NotionDate | None
 ) -> None:
-    """
-    更新指定股票和键的更新时间记录。
+    """更新指定股票和键的更新时间记录。
 
-    参数:
-        stock (str): 股票标识符，用于定位需要更新的记录。
-        key (KEYS): 键值，与股票一起唯一确定一条记录。
-        update_time (NotionDate | None): 新的更新时间，可以为None表示不设置具体时间。
+    Args:
+        stock: 股票代码。
+        key: 业务键类型。
+        update_time: 新的更新时间，可以为 None。
 
-    返回:
-        None: 该函数不返回任何值。
-
-    异常:
-        ValueError: 如果未找到对应的记录，则抛出此异常，提示业务逻辑错误。
+    Raises:
+        ValueError: 如果未找到对应的记录（应先查询后更新）。
     """
     async with get_conn() as conn:
         cursor = await conn.execute(
@@ -224,4 +220,13 @@ async def set_update_time(
             )
 
 
-__all__ = ["get_conn", "get_update_time", "set_update_time", "check_hash", "save_hash"]
+__all__ = [
+    "HashContent",
+    "HashContentWithHash",
+    "get_conn",
+    "init_db",
+    "get_update_time",
+    "set_update_time",
+    "check_hash",
+    "save_hash",
+]

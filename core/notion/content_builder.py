@@ -1,3 +1,8 @@
+"""Notion 页面内容构建器。
+
+提供链式 API 构建 Notion Block 列表，支持标题、段落、表格、分隔线和 Callout 等块类型。
+"""
+
 from typing import Self
 
 import pandas as pd
@@ -24,22 +29,32 @@ from .models import (
 
 
 def _rich_text(text: str) -> list[RichTextInput]:
-    """构建单条 RichTextInput 列表"""
+    """构建单条 RichTextInput 列表。"""
     return [RichTextInput(text=TextContent(content=text))]
 
 
 class NotionContentBuilder:
-    """Notion页面content构建器"""
+    """Notion 页面 content 构建器，支持链式调用。
 
-    def __init__(self):
+    Example:
+        >>> content = (
+        ...     NotionContentBuilder()
+        ...     .add_heading("标题", level=2)
+        ...     .add_paragraph("正文内容")
+        ...     .add_divider()
+        ...     .build()
+        ... )
+    """
+
+    def __init__(self) -> None:
         self.blocks: list[Block] = []
 
     def add_heading(self, text: str, level: int = 1) -> Self:
-        """添加标题
+        """添加标题块。
 
         Args:
-            text: 标题文本
-            level: 1, 2, 或 3 (对应#, ##, ###)
+            text: 标题文本。
+            level: 标题级别（1/2/3），对应 heading_1/2/3。
         """
         content = RichTextBlockContent(rich_text=_rich_text(text))
         block: Block
@@ -53,7 +68,11 @@ class NotionContentBuilder:
         return self
 
     def add_paragraph(self, text: str) -> Self:
-        """添加段落"""
+        """添加段落块。
+
+        Args:
+            text: 段落文本。
+        """
         self.blocks.append(
             ParagraphBlock(paragraph=RichTextBlockContent(rich_text=_rich_text(text)))
         )
@@ -65,7 +84,13 @@ class NotionContentBuilder:
         has_column_header: bool = True,
         has_row_header: bool = False,
     ) -> Self:
-        """从 DataFrame 构建表格 block"""
+        """从 pandas DataFrame 构建表格块。
+
+        Args:
+            df: 数据源 DataFrame。
+            has_column_header: 是否包含列标题行。
+            has_row_header: 是否包含行标题列。
+        """
         rows: list[TableRowBlock] = []
 
         # 列标题行
@@ -94,12 +119,17 @@ class NotionContentBuilder:
         return self
 
     def add_divider(self) -> Self:
-        """添加分隔线"""
+        """添加分隔线块。"""
         self.blocks.append(DividerBlock(divider=DividerContent()))
         return self
 
-    def add_callout(self, text: str, icon: str = "💡") -> Self:
-        """添加callout"""
+    def add_callout(self, text: str, icon: str = "\U0001f4a1") -> Self:
+        """添加 Callout 提示框块。
+
+        Args:
+            text: 提示内容文本。
+            icon: Emoji 图标，默认为灯泡。
+        """
         self.blocks.append(
             CalloutBlock(
                 callout=CalloutContent(
@@ -111,5 +141,5 @@ class NotionContentBuilder:
         return self
 
     def build(self) -> list[Block]:
-        """返回构建好的blocks数组"""
+        """返回构建好的 Block 列表。"""
         return self.blocks
