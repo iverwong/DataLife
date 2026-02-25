@@ -27,30 +27,27 @@ async def process_business_data_for_stock_list(stock_list: list[StockPool]) -> N
     Args:
         stock_list: 待处理的股票列表。
     """
-    task_logger = logger.bind(stock_list=[stock.code for stock in stock_list])
-    task_logger.info("开始处理股票列表中的主营构成数据")
+    codes = [stock.code for stock in stock_list]
+    task_logger = logger.bind(stocks=",".join(codes))
+    task_logger.info("开始处理主营构成数据，共 {} 只股票", len(stock_list))
 
-    update_times = await get_update_time(
-        [stock.code for stock in stock_list], "business"
-    )
-    task_logger.success(
-        "成功获取股票列表的主营构成数据更新时间", update_times=update_times
-    )
+    update_times = await get_update_time(codes, "business")
+    task_logger.debug("已获取主营构成更新时间")
 
     for stock_pool in stock_list:
         stock_code = stock_pool.code
         stock_id = stock_pool.id
-        stock_task_logger = task_logger.bind(stock=stock_code)
+        stock_logger = task_logger.bind(stock=stock_code)
 
         # 如果半年数据还没到下个半年，则跳过更新
         if not _should_update_half_year(update_times[stock_code]):
-            stock_task_logger.info("股票{}主营构成数据已更新，跳过更新", stock_code)
+            stock_logger.debug("主营构成数据未到更新周期，跳过")
             continue
 
         try:
             business_data = await get_business(stock_code)
         except Exception:
-            stock_task_logger.exception("获取股票{}主营构成数据失败，跳过", stock_code)
+            stock_logger.exception("获取主营构成数据失败")
             continue
 
         # 构建去重内容
@@ -62,7 +59,7 @@ async def process_business_data_for_stock_list(stock_list: list[StockPool]) -> N
         # 检查是否已存在
         filtered: list[HashContentWithHash] = await check_hash([hash_content])
         if not filtered:
-            stock_task_logger.info("股票{}主营构成数据已存在，跳过创建页面", stock_code)
+            stock_logger.debug("主营构成数据已存在，跳过")
             continue
 
         # 构建页面内容
@@ -76,10 +73,9 @@ async def process_business_data_for_stock_list(stock_list: list[StockPool]) -> N
             .add_table_from_dataframe(business_data.region_df)
         )
 
-        notion_logger = stock_task_logger.bind(
-            data_type="主营构成", published_date=business_data.report_date
+        stock_logger.info(
+            "创建主营构成页面: {} ({})", stock_code, business_data.report_date
         )
-        notion_logger.info("开始创建{}-主营业务构成数据流页面", stock_code)
 
         page_result = await create_dataflow_page(
             title=f"{stock_code}-{business_data.report_date}-主营构成",
@@ -91,7 +87,7 @@ async def process_business_data_for_stock_list(stock_list: list[StockPool]) -> N
         )
 
         if page_result:
-            notion_logger.success("成功创建{}-主营业务构成数据流页面", stock_code)
+            stock_logger.success("主营构成页面创建成功: {}", stock_code)
             await save_hash([each.hash_value for each in filtered])
             await set_update_time(
                 stock_code,
@@ -99,7 +95,7 @@ async def process_business_data_for_stock_list(stock_list: list[StockPool]) -> N
                 update_time=convert_datetime_to_notion_date(business_data.report_date),
             )
         else:
-            notion_logger.error("创建{}-主营业务构成数据流页面失败", stock_code)
+            stock_logger.error("主营构成页面创建失败: {}", stock_code)
 
 
 def _should_update_half_year(last_update_str: NotionDate | None) -> bool:
@@ -131,10 +127,7 @@ def _should_update_half_year(last_update_str: NotionDate | None) -> bool:
     elif month == 12 and day == 31:  # Q4
         next_query_date = datetime(year + 1, 7, 1)
     else:
-        logger.warning(
-            "传入的日期{}不是季度末，该函数仅能处理季度末数据，考虑排查数据错误",
-            last_update_str,
-        )
+        logger.warning("非季度末日期 {}，请排查数据", last_update_str)
         return False
 
     now = datetime.now()

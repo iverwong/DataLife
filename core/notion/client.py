@@ -30,15 +30,13 @@ class AsyncRateLimitedTransport(httpx.AsyncHTTPTransport):
         self._limiter: AsyncLimiter = AsyncLimiter(
             max_rate=max_rate, time_period=time_period
         )
-        logger.info(
-            f"速率限制器初始化: max_rate={max_rate}/time_period={time_period}s (约 {max_rate / time_period:.1f} 请求/秒)"
+        logger.debug(
+            "速率限制器初始化: {:.1f} 请求/秒", max_rate / time_period
         )
 
     @override
     async def handle_async_request(self, request: Request) -> Response:
-        logger.debug(f"[RateLimit] 请求: {request.method} {request.url.host}")
         async with self._limiter:
-            logger.debug(f"[RateLimit] 放行请求: {request.method} {request.url.host}")
             return await super().handle_async_request(request)
 
     @override
@@ -56,4 +54,4 @@ httpx_client = httpx.AsyncClient(
 )
 
 notion = AsyncClient(client=httpx_client, auth=os.getenv("NOTION_TOKEN"))
-logger.info("Notion AsyncClient 初始化完成")
+logger.debug("Notion AsyncClient 初始化完成")

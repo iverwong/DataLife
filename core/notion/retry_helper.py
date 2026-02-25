@@ -67,21 +67,27 @@ def with_retry(
                     if attempt > 0:
                         # 指数退避：1s, 2s, 4s, 8s...
                         delay = RETRY_DELAY_BASE * (2.0 ** (attempt - 1))
-                        logger.warning(
-                            f"[重试] {func.__name__} 第 {attempt}/{max_retries} 次尝试，等待 {delay:.1f}s..."
+                        logger.debug(
+                            "重试 {}: {}/{} (等待 {:.1f}s)",
+                            func.__name__,
+                            attempt,
+                            max_retries,
+                            delay,
                         )
                         await asyncio.sleep(delay)
                     return await func(*args, **kwargs)
                 except retryable_exceptions as e:
                     last_exception = e
-                    logger.warning(f"[重试] {func.__name__} 遇到网络错误")
                     if attempt >= max_retries:
-                        logger.error(
-                            f"[重试] {func.__name__} 已达到最大重试次数 ({max_retries})，放弃重试"
+                        logger.warning(
+                            "重试耗尽 {}: {} (已尝试 {} 次)",
+                            func.__name__,
+                            type(e).__name__,
+                            max_retries + 1,
                         )
                         raise
                 except Exception:
-                    logger.exception(f"[重试] {func.__name__} 遇到非重试错误")
+                    logger.exception("非重试异常 {}", func.__name__)
                     raise
             raise last_exception
 

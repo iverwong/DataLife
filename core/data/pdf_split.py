@@ -11,6 +11,7 @@ import httpx
 import pymupdf  # pyright: ignore[reportMissingTypeStubs]
 from loguru import logger
 
+from core.utils import gather_with_concurrency, get_pdf_download_semaphore
 from core.models.announcement import AnnouncementWithHash
 
 from .announcement import AnnouncementWithContent
@@ -30,6 +31,8 @@ async def split_pdf(
     页数不超过 CHUNK_SIZE 的 PDF 作为整体保留；超过的按 CHUNK_SIZE 分割，
     相邻块之间重叠 REP_SIZE 页。分割失败时保留原始公告（空内容）。
 
+    使用并发控制限制同时下载的 PDF 数量，防止资源耗尽。
+
     Args:
         announcement_list: 需要分割的公告及其哈希值列表。
 
@@ -37,64 +40,95 @@ async def split_pdf(
         分割后的公告内容与原始哈希信息的配对列表。每个元素包含
         带二进制内容的公告对象和对应的原始 AnnouncementWithHash。
     """
+    if not announcement_list:
+        return []
+
+    logger.info("开始并发处理 {} 个 PDF 文件", len(announcement_list))
+
+    # 构建协程列表
+    tasks = [_process_single_pdf(item) for item in announcement_list]
+
+    # 使用并发限制执行所有任务
+    results = await gather_with_concurrency(get_pdf_download_semaphore(), tasks)
+
+    # 展平结果（每个任务可能返回多个分割块）
+    flattened: list[tuple[AnnouncementWithContent, AnnouncementWithHash]] = []
+    for item_results in results:
+        flattened.extend(item_results)
+
+    logger.success("PDF 处理完成，共生成 {} 个文件块", len(flattened))
+    return flattened
+
+
+async def _process_single_pdf(
+    item: AnnouncementWithHash,
+) -> list[tuple[AnnouncementWithContent, AnnouncementWithHash]]:
+    """处理单个 PDF 文件：下载、判断是否分割、返回结果。
+
+    Args:
+        item: 包含公告信息和哈希值的对象。
+
+    Returns:
+        该 PDF 对应的公告内容列表（可能是单个或多个分割块）。
+    """
+    ann = item.announcement
+    task_logger = logger.bind(file=ann.title)
     result: list[tuple[AnnouncementWithContent, AnnouncementWithHash]] = []
-    task_logger = logger.bind(count=len(announcement_list))
 
-    for item in announcement_list:
-        ann = item.announcement
-        subtask_logger = task_logger.bind(title=ann.title)
-        subtask_logger.info("开始分割PDF: {}", ann.title)
+    try:
+        pdf_content = await _download_pdf(ann.url)
+        page_count = _get_pdf_page_count(pdf_content)
 
-        try:
-            pdf_content = await _download_pdf(ann.url)
-            page_count = _get_pdf_page_count(pdf_content)
-            subtask_logger.info("PDF页数: {}", page_count)
-
-            if page_count <= CHUNK_SIZE:
-                new_announcement = AnnouncementWithContent(
-                    id=ann.id,
-                    stock=ann.stock,
-                    title=ann.title,
-                    size=ann.size,
-                    url=ann.url,
-                    published_date=ann.published_date,
-                    content=pdf_content,
-                )
-                subtask_logger.success("PDF处理完成（无需分割）: {}", ann.title)
-                result.append((new_announcement, item))
-            else:
-                split_contents = _split_pdf_content(pdf_content)
-                subtask_logger.success("PDF分割完成: {}，共{}块", ann.title, len(split_contents))
-
-                for i, content in enumerate(split_contents):
-                    start_page = i * (CHUNK_SIZE - REP_SIZE) + 1
-                    end_page = min(start_page + CHUNK_SIZE - 1, page_count)
-
-                    new_title = f"{ann.title}(P{start_page}-P{end_page})"
-                    new_announcement = AnnouncementWithContent(
-                        id=ann.id,
-                        stock=ann.stock,
-                        title=new_title,
-                        size=len(content) // 1024,
-                        url=ann.url,
-                        published_date=ann.published_date,
-                        content=content,
-                    )
-                    result.append((new_announcement, item))
-
-        except Exception:
-            subtask_logger.exception("分割PDF失败 {}", ann.title)
-            # 分割失败时保留原始公告（空内容），仍关联原始哈希
-            fallback = AnnouncementWithContent(
+        if page_count <= CHUNK_SIZE:
+            new_announcement = AnnouncementWithContent(
                 id=ann.id,
                 stock=ann.stock,
                 title=ann.title,
                 size=ann.size,
                 url=ann.url,
                 published_date=ann.published_date,
-                content=b"",
+                content=pdf_content,
             )
-            result.append((fallback, item))
+            task_logger.debug("PDF 无需分割: {} ({} 页)", ann.title, page_count)
+            result.append((new_announcement, item))
+        else:
+            split_contents = _split_pdf_content(pdf_content)
+            task_logger.info(
+                "PDF 分割完成: {} ({} 页 -> {} 块)",
+                ann.title,
+                page_count,
+                len(split_contents),
+            )
+
+            for i, content in enumerate(split_contents):
+                start_page = i * (CHUNK_SIZE - REP_SIZE) + 1
+                end_page = min(start_page + CHUNK_SIZE - 1, page_count)
+
+                new_title = f"{ann.title}(P{start_page}-P{end_page})"
+                new_announcement = AnnouncementWithContent(
+                    id=ann.id,
+                    stock=ann.stock,
+                    title=new_title,
+                    size=len(content) // 1024,
+                    url=ann.url,
+                    published_date=ann.published_date,
+                    content=content,
+                )
+                result.append((new_announcement, item))
+
+    except Exception:
+        task_logger.exception("PDF 分割失败: {}", ann.title)
+        # 分割失败时保留原始公告（空内容），仍关联原始哈希
+        fallback = AnnouncementWithContent(
+            id=ann.id,
+            stock=ann.stock,
+            title=ann.title,
+            size=ann.size,
+            url=ann.url,
+            published_date=ann.published_date,
+            content=b"",
+        )
+        result.append((fallback, item))
 
     return result
 
@@ -112,12 +146,10 @@ async def _download_pdf(url: str) -> bytes:
         httpx.HTTPStatusError: HTTP 请求返回非 2xx 状态码。
         httpx.TimeoutException: 请求超时。
     """
-    task_logger = logger.bind(url=url)
-    task_logger.info("开始下载PDF文件: {}", url)
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.get(url)
         response.raise_for_status()
-        task_logger.success("下载PDF文件成功: {}", url)
+        logger.debug("PDF 下载完成: {}", url)
         return response.content
 
 

@@ -84,7 +84,7 @@ async def init_db() -> None:
 
     创建 update_records（更新时间记录）和 hash（去重哈希）两张表。
     """
-    logger.info("初始化数据库连接")
+    logger.debug("初始化数据库连接")
     conn = await _get_db()
     _ = await conn.execute("""
             CREATE TABLE IF NOT EXISTS update_records (
@@ -104,7 +104,7 @@ async def init_db() -> None:
             """
     )
     await conn.commit()
-    logger.success("数据库初始化完成")
+    logger.info("数据库初始化完成")
 
 
 async def check_hash(data_list: list[HashContent]) -> list[HashContentWithHash]:

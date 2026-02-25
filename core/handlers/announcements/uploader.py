@@ -10,7 +10,11 @@ from loguru import logger
 
 from core.data import split_pdf
 from core.models.announcement import AnnouncementWithHash
-from core.models.upload import FileUploadRequest, FileUploadResult, FileUploadWithContent
+from core.models.upload import (
+    FileUploadRequest,
+    FileUploadResult,
+    FileUploadWithContent,
+)
 from core.notion.upload_file import upload_files_with_local, upload_files_with_url
 
 SPLIT_KEYWORDS = ["年度报告", "年报", "中期"]
@@ -56,9 +60,8 @@ async def upload_announcement_files(
 
     for item in announcements:
         ann = item.announcement
-        needs_split = (
-            ann.size > size_threshold
-            or any(kw in ann.title for kw in split_keywords)
+        needs_split = ann.size > size_threshold or any(
+            kw in ann.title for kw in split_keywords
         )
         if needs_split:
             large_files.append(item)
@@ -66,9 +69,7 @@ async def upload_announcement_files(
             small_files.append(item)
 
     logger.info(
-        "公告文件分类完成：外链上传 {} 个，分割上传 {} 个",
-        len(small_files),
-        len(large_files),
+        "公告分类: 外链 {} 个，分割上传 {} 个", len(small_files), len(large_files)
     )
 
     # 构建外链上传请求并启动任务
@@ -135,13 +136,13 @@ def _categorize_upload_results(
     for result in local_results:
         hash_groups.setdefault(result.hash_content, []).append(result)
 
-    for hash_content, group in hash_groups.items():
+    for group in hash_groups.values():
         if all(item.succeeded for item in group):
             succeeded.extend(group)
         else:
             failed.extend(group)
 
     if failed:
-        logger.error("上传失败文件: {}", [f.title for f in failed])
+        logger.error("上传失败: {}", [f.title for f in failed])
 
     return succeeded, failed

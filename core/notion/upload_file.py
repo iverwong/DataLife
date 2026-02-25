@@ -32,22 +32,21 @@ async def upload_files_with_local(
     attempt = 0
 
     while pending_files and attempt <= max_retries:
-        logger.info("开始处理 {} 个本地文件", len(pending_files))
-
         if attempt > 0:
             logger.warning(
-                "[重试] 第 {}/{} 次重试，待重试文件: {}",
+                "本地上传重试 {}/{}，待处理 {} 个",
                 attempt,
                 max_retries,
-                [f.title for f in pending_files],
+                len(pending_files),
             )
+        else:
+            logger.info("开始本地上传，共 {} 个文件", len(pending_files))
 
         upload_tasks = [_upload_internal_and_wait(each) for each in pending_files]
         batch_results: list[FileUploadResult] = await asyncio.gather(*upload_tasks)
 
         succeeded = [r for r in batch_results if r.succeeded]
         failed = [r for r in batch_results if not r.succeeded]
-        logger.info("本轮完成: 成功 {} 个, 失败 {} 个", len(succeeded), len(failed))
 
         all_results.extend(succeeded)
 
@@ -57,7 +56,7 @@ async def upload_files_with_local(
         else:
             if failed:
                 logger.error(
-                    "以下文件已达最大重试次数仍失败: {}", [f.title for f in failed]
+                    "本地上传最终失败 {} 个: {}", len(failed), [f.title for f in failed]
                 )
             all_results.extend(failed)
             pending_files = []
@@ -65,7 +64,7 @@ async def upload_files_with_local(
         attempt += 1
 
     logger.info(
-        "本地上传完成，成功: {}/{}",
+        "本地上传完成，成功 {}/{}",
         sum(1 for f in all_results if f.succeeded),
         len(all_results),
     )
@@ -86,16 +85,13 @@ async def _upload_internal_and_wait(
     """
     task_logger = logger.bind(file=file_info.title)
 
-    task_logger.info("创建{}的Notion上传对象", file_info.title)
+    task_logger.debug("创建 Notion 上传对象: {}", file_info.title)
     create_result = FileUploadResponse.model_validate(
         await notion.file_uploads.create(
             filename=file_info.title + ".PDF", content_type="application/pdf"
         )
     )
     file_id = create_result.id
-    task_logger.info(
-        "文件创建成功，{}|{}，开始上传", file_info.title, file_id, file_id=file_id
-    )
 
     file_succeeded = False
     file_error: str | None = None
@@ -108,14 +104,12 @@ async def _upload_internal_and_wait(
         send_result = FileUploadResponse.model_validate(send_raw)
         if send_result.status == "uploaded":
             file_succeeded = True
-            task_logger.success("上传文件 {} 成功", file_info.title)
+            task_logger.success("上传成功: {} ({})", file_info.title, file_id)
         else:
             file_error = _extract_upload_error(send_result) or "未知错误"
-            task_logger.error(
-                "上传文件 {} 失败，响应为{}", file_info.title, send_result
-            )
+            task_logger.error("上传失败: {} - {}", file_info.title, file_error)
     except Exception as e:
-        task_logger.error("上传文件 {} 失败，错误为{}", file_info.title, e)
+        task_logger.error("上传异常: {} - {}", file_info.title, e)
         file_error = str(e)
 
     return FileUploadResult(
@@ -143,30 +137,26 @@ async def upload_files_with_url(
     Returns:
         所有文件的上传结果列表。
     """
-    task_logger = logger.bind(file_count=len(file_list))
-    task_logger.info("开始上传文件列表中的所有文件")
-
     all_results: list[FileUploadResult] = []
     pending_files = file_list
     attempt = 0
 
     while pending_files and attempt <= max_retries:
-        task_logger.info("开始处理 {} 个文件", len(pending_files))
-
         if attempt > 0:
-            task_logger.warning(
-                "[重试] 第 {}/{} 次重试，待重试文件: {}",
+            logger.warning(
+                "外链上传重试 {}/{}，待处理 {} 个",
                 attempt,
                 max_retries,
-                [f.title for f in pending_files],
+                len(pending_files),
             )
+        else:
+            logger.info("开始外链上传，共 {} 个文件", len(pending_files))
 
         upload_tasks = [_upload_external_and_wait(each) for each in pending_files]
         batch_results: list[FileUploadResult] = await asyncio.gather(*upload_tasks)
 
         succeeded = [r for r in batch_results if r.succeeded]
         failed = [r for r in batch_results if not r.succeeded]
-        task_logger.info("本轮完成: 成功 {} 个, 失败 {} 个", len(succeeded), len(failed))
 
         all_results.extend(succeeded)
 
@@ -175,16 +165,16 @@ async def upload_files_with_url(
             pending_files = [f for f in file_list if f.url in failed_urls]
         else:
             if failed:
-                task_logger.error(
-                    "以下文件已达最大重试次数仍失败: {}", [f.title for f in failed]
+                logger.error(
+                    "外链上传最终失败 {} 个: {}", len(failed), [f.title for f in failed]
                 )
             all_results.extend(failed)
             pending_files = []
 
         attempt += 1
 
-    task_logger.success(
-        "上传任务完成: {}/{}个文件已成功",
+    logger.success(
+        "外链上传完成，成功 {}/{}",
         sum(1 for f in all_results if f.succeeded),
         len(all_results),
     )
@@ -201,8 +191,8 @@ async def _upload_external_and_wait(file_info: FileUploadRequest) -> FileUploadR
     Returns:
         单个文件的上传结果。
     """
-    task_logger = logger.bind(file_title=file_info.title, file_url=file_info.url)
-    task_logger.info("上传外部文件：{} ({})", file_info.title, file_info.url)
+    task_logger = logger.bind(file=file_info.title)
+    task_logger.debug("外链上传: {}", file_info.title)
     try:
         create_raw = await notion.file_uploads.create(  # pyright: ignore[reportAny]
             mode="external_url",
@@ -211,12 +201,11 @@ async def _upload_external_and_wait(file_info: FileUploadRequest) -> FileUploadR
         )
         create_response = FileUploadResponse.model_validate(create_raw)
         file_id = create_response.id
-        task_logger.info("外部文件创建成功，id={}，开始轮询", file_id)
 
         poll_result = await _poll_upload_status(file_id, file_info.title)
 
         if poll_result.status == "uploaded":
-            task_logger.success("{} 上传成功", file_info.title)
+            task_logger.success("外链上传成功: {} ({})", file_info.title, file_id)
             return FileUploadResult(
                 stock=file_info.stock,
                 url=file_info.url,
@@ -229,7 +218,7 @@ async def _upload_external_and_wait(file_info: FileUploadRequest) -> FileUploadR
             )
 
         error_msg = _extract_upload_error(poll_result) or "轮询超时"
-        task_logger.error("{} 上传失败: {}", file_info.title, error_msg)
+        task_logger.error("外链上传失败: {} - {}", file_info.title, error_msg)
         return FileUploadResult(
             stock=file_info.stock,
             url=file_info.url,
@@ -242,7 +231,7 @@ async def _upload_external_and_wait(file_info: FileUploadRequest) -> FileUploadR
         )
 
     except Exception as e:
-        task_logger.error("创建外部文件上传任务失败，错误为{}", e)
+        task_logger.error("外链上传异常: {} - {}", file_info.title, e)
         return FileUploadResult(
             stock=file_info.stock,
             url=file_info.url,
@@ -289,39 +278,32 @@ async def _poll_upload_status(
     Returns:
         最终的文件上传状态响应（uploaded/failed/超时）。
     """
-    task_logger = logger.bind(file_id=file_id, filename=filename)
+    task_logger = logger.bind(file_id=file_id, file=filename)
     intervals = [1, 2, 4, 8, 16]
 
     for attempt in range(max_attempts):
-        task_logger.info(
-            "轮询文件状态: {} | file_id={} (第 {}/{} 次)",
-            filename,
-            file_id,
-            attempt + 1,
-            max_attempts,
-        )
         response = FileUploadResponse.model_validate(
             await notion.file_uploads.retrieve(file_id)
         )
 
-        task_logger.info("文件 {} | file_id={} 状态: {}", filename, file_id, response.status)
-
         if response.status in ("uploaded", "failed"):
-            task_logger.info(
-                "文件 {} | file_id={} 处理结束，最终状态: {}",
-                filename,
-                file_id,
-                response.status,
+            task_logger.debug(
+                "轮询完成: {} 状态={} (尝试 {})", filename, response.status, attempt + 1
             )
             return response
 
         wait_time = intervals[min(attempt, len(intervals) - 1)]
-        task_logger.info("文件 {} 未完成上传，等待 {} 秒后再次查询...", filename, wait_time)
+        task_logger.debug(
+            "轮询中: {} 状态={}，等待 {}s (尝试 {}/{})",
+            filename,
+            response.status,
+            wait_time,
+            attempt + 1,
+            max_attempts,
+        )
         await asyncio.sleep(wait_time)
 
-    task_logger.warning(
-        "文件 {} | file_id={} 轮询超时 (超过 {} 次尝试)", filename, file_id, max_attempts
-    )
+    task_logger.warning("轮询超时: {} ({})", filename, file_id)
     return FileUploadResponse(
         id=file_id,
         created_time="",

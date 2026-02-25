@@ -86,9 +86,9 @@ async def get_announcements(
         logger.warning("股票列表为空，跳过获取公告信息")
         return []
     task_logger = logger.bind(
-        stock_list=stock_list, start_date=start_date, end_date=end_date
+        stocks=",".join(stock_list), start=str(start_date), end=str(end_date)
     )
-    task_logger.info("开始获取公告信息：{}", stock_list)
+    task_logger.info("开始获取公告，股票: {}", stock_list)
 
     url = "http://www.cninfo.com.cn/new/hisAnnouncement/query"
 
@@ -112,19 +112,17 @@ async def get_announcements(
         "isHLtitle": "true",
     }
 
-    async with httpx.AsyncClient() as client:
-        task_logger.info("开始发送获取公告请求")
+    async with httpx.AsyncClient(timeout=30.0) as client:
         res = await client.post(url, params=payload)
         try:
             _ = res.raise_for_status()
         except httpx.HTTPStatusError:
             task_logger.exception("获取公告请求失败")
             return []
-        task_logger.success("公告首页请求成功")
         first_page = AnnouncementsResponse.model_validate(res.json())
 
         if first_page.totalAnnouncement == 0:
-            task_logger.info(f"没有获取到{stock_list}的公告信息")
+            task_logger.info("未获取到公告数据")
             return []
 
         # 处理 announcements 为 None 的情况
@@ -132,16 +130,10 @@ async def get_announcements(
         # 使用接口返回的totalpages参数获取**剩余**页数
         page_count = first_page.totalpages
 
-        task_logger.info(
-            "API返回公告数量:{},总页数:{}",
-            len(announcements),
-            page_count,
-        )
+        task_logger.debug("首页返回 {} 条，总页数 {}", len(announcements), page_count)
         for i in range(page_count):
             payload["pageNum"] = str(i + 2)
-            task_logger.info("开始获取第{}页公告请求", i + 2)
             res = await client.post(url, params=payload)
-            task_logger.info("第{}页公告请求成功", i + 2)
             page = AnnouncementsResponse.model_validate(res.json())
             announcements.extend(page.announcements or [])
 
@@ -152,12 +144,11 @@ async def get_announcements(
         for item in announcements
         if not any(kw in item.announcementTitle for kw in FILTERED_KEYWORDS)
     ]
-    task_logger.info(
-        f"公告关键字过滤，过滤前: {before_filter_count}, 过滤后: {len(filtered)}"
-    )
 
     result = [_convert_item_to_announcement(item) for item in filtered]
-    task_logger.success("公告信息获取完成，共{}条", len(result))
+    task_logger.success(
+        "公告获取完成，原始 {} 条，过滤后 {} 条", before_filter_count, len(result)
+    )
     return result
 
 
@@ -183,7 +174,7 @@ async def _get_stock_json(symbol: str = "沪深京") -> dict[str, str]:
     #     url = "http://www.cninfo.com.cn/new/data/hke_stock.json"
     else:
         raise ValueError("不受支持的股票类型！")
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.get(url)
     stock_data = StockListResponse.model_validate(response.json())
     return {stock.code: stock.orgId for stock in stock_data.stockList}

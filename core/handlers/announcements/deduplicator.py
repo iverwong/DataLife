@@ -36,11 +36,7 @@ async def deduplicate_announcements(
     # 检查哈希去重
     filtered: list[HashContentWithHash] = await check_hash(hash_contents)
 
-    logger.info(
-        "公告数据增量更新，去重前{}, 去重后{}",
-        len(hash_contents),
-        len(filtered),
-    )
+    logger.info("公告去重: {} -> {} 条", len(hash_contents), len(filtered))
 
     if not filtered:
         return []

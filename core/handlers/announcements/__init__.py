@@ -26,19 +26,20 @@ async def process_announcements_for_stock_list(
     Args:
         stock_list: 待处理的股票列表。
     """
-    task_logger = logger.bind(stock_list=[s.code for s in stock_list])
-    task_logger.info("开始处理股票列表中的公告数据")
+    codes = [s.code for s in stock_list]
+    task_logger = logger.bind(stocks=",".join(codes))
+    task_logger.info("开始处理公告数据，共 {} 只股票", len(stock_list))
 
     # 1. 获取公告数据
     announcements, today = await fetch_announcements_for_stocks(stock_list)
     if not announcements:
-        task_logger.info("没有获取到任何公告，跳过处理")
+        task_logger.info("无公告数据，跳过处理")
         return
 
     # 2. 哈希去重
     deduped = await deduplicate_announcements(announcements)
     if not deduped:
-        task_logger.info("所有公告都已存在，跳过处理")
+        task_logger.info("公告均已存在，跳过处理")
         return
 
     # 3. 分类并上传文件

@@ -59,6 +59,9 @@ async def create_announcement_pages(
 
     success_count = sum(create_results)
     failed_count = len(create_results) - success_count
-    logger.info("公告页面创建完成：成功 {} 条，失败 {} 条", success_count, failed_count)
+    if failed_count > 0:
+        logger.warning("公告页面创建: 成功 {}，失败 {}", success_count, failed_count)
+    else:
+        logger.info("公告页面创建: 成功 {} 条", success_count)
 
     return unique_hashes

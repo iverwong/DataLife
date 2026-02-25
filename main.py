@@ -1,14 +1,15 @@
 # ruff: noqa: E402
 
 # 配置日志
-from core.logs import setup_logging
+from core.logs import setup_logging, set_trace_id
 
 setup_logging()
+set_trace_id()
 
 from loguru import logger
 
 # 加载环境变量
-logger.info("加载环境变量")
+logger.info("程序启动，加载环境变量")
 
 from dotenv import load_dotenv
 

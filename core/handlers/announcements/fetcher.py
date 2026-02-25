@@ -3,13 +3,13 @@
 负责从数据库获取更新时间、按日期分组股票、并发获取公告数据。
 """
 
-import asyncio
 from collections import defaultdict
 from datetime import date
 
 from dateutil.relativedelta import relativedelta
 from loguru import logger
 
+from core.utils import gather_with_concurrency_and_exceptions, get_cninfo_semaphore
 from core.data.announcement import Announcement
 from core.db import get_update_time
 from core.notion.datetime_helper import convert_notion_date_to_datetime
@@ -24,6 +24,7 @@ async def fetch_announcements_for_stocks(
 
     对于从未查询过的股票，默认从一年前开始查询；
     对于已有更新时间的股票，按更新日期分组合并查询。
+    使用并发控制限制同时进行的 API 请求数量。
 
     Args:
         stock_list: 包含股票信息的列表。
@@ -31,24 +32,21 @@ async def fetch_announcements_for_stocks(
     Returns:
         元组 (公告列表, 当天日期)。当天日期用于后续更新时间记录。
     """
-    task_logger = logger.bind(stock_list=[s.code for s in stock_list])
-    task_logger.info("开始获取股票列表的公告数据")
+    codes = [s.code for s in stock_list]
+    task_logger = logger.bind(stocks=",".join(codes))
+    task_logger.info("开始获取公告数据，共 {} 只股票", len(stock_list))
 
-    update_times = await get_update_time(
-        [stock.code for stock in stock_list], "announcements"
-    )
+    update_times = await get_update_time(codes, "announcements")
 
     today = date.today()
-    tasks: list[asyncio.Task[list[Announcement]]] = []
+    tasks: list = []
 
     # 从未查询过的股票：从一年前开始
     init_stocks = [code for code, value in update_times.items() if value is None]
     if init_stocks:
         start_date = today - relativedelta(years=1)
         end_date = today + relativedelta(days=1)
-        tasks.append(
-            asyncio.create_task(get_announcements(init_stocks, start_date, end_date))
-        )
+        tasks.append(get_announcements(init_stocks, start_date, end_date))
 
     # 已有更新时间的股票：按日期分组合并查询
     group = defaultdict[date, list[str]](list)
@@ -60,23 +58,22 @@ async def fetch_announcements_for_stocks(
     for update_date, codes in group.items():
         start_date = update_date
         end_date = today + relativedelta(days=1)
-        tasks.append(
-            asyncio.create_task(get_announcements(codes, start_date, end_date))
-        )
+        tasks.append(get_announcements(codes, start_date, end_date))
 
     if not tasks:
-        task_logger.info("没有需要查询的公告任务")
+        task_logger.info("无需查询公告")
         return [], today
 
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    # 使用并发控制执行所有任务
+    results = await gather_with_concurrency_and_exceptions(get_cninfo_semaphore(), tasks)
 
     # 展平结果，跳过异常
     announcements: list[Announcement] = []
     for result in results:
         if isinstance(result, BaseException):
-            task_logger.error("获取公告数据时发生异常: {}", result)
+            task_logger.error("获取公告异常: {}", type(result).__name__)
             continue
         announcements.extend(result)
 
-    task_logger.success("所有股票公告信息获取完成，共{}条", len(announcements))
+    task_logger.success("公告获取完成，共 {} 条", len(announcements))
     return announcements, today

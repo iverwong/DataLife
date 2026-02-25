@@ -27,7 +27,7 @@ trigger: always_on
 - **去重哈希**: xxhash
 - **缓存**: alru_cache
 - **数据源**: 巨潮资讯网 API、AkShare
-- **测试**: pytest + pytest-asyncio
+- **测试**: pytest + pytest-asyncio + freezegun（时间控制）
 
 ## 编码规范
 
@@ -52,6 +52,8 @@ trigger: always_on
 - 使用 `logging` 模块，禁止使用 `print()` 进行调试输出
 - 异常日志应包含：操作上下文、请求参数（脱敏）、错误堆栈
 - Notion API 调用失败时应区分可重试（429/5xx）与不可重试（400/401/404）错误
+- HTTP 请求失败后应立即返回，避免继续处理无效数据
+- 缺失必要环境变量时应记录警告日志，便于排查配置问题
 
 ### 数据库操作
 
@@ -67,8 +69,41 @@ trigger: always_on
 - `core/data/` — 只负责外部数据采集与预处理，不涉及 Notion 操作
 - `core/notion/` — 只负责 Notion API 交互，不涉及数据采集逻辑
 - `core/db/` — 只负责本地持久化，提供跨模块共享的存储能力
-- `core/*_data_handler.py` — 编排层，协调 data、db、notion 模块完成业务流程
+- `core/models/` — 共享数据类型定义，使用 frozen dataclass 模式
+- `core/handlers/` — 编排层，协调 data、db、notion 模块完成业务流程
 - 新增功能应遵循此分层，禁止跨层直接耦合
+
+### Handler 分层架构
+
+Handler 模块采用分层架构，以 `core/handlers/announcements/` 为例：
+
+```
+core/handlers/announcements/
+├── __init__.py      # 主编排函数 process_announcements_for_stock_list()
+├── fetcher.py       # 数据获取与分组
+├── deduplicator.py  # 基于 xxhash 的去重逻辑
+├── uploader.py      # 文件分类与上传策略
+└── page_creator.py  # Notion 页面创建
+```
+
+数据流方向：`fetcher → deduplicator → uploader → page_creator`
+
+每个子模块职责单一，便于单元测试与维护。新增复杂 handler 时应参考此模式。
+
+### 类型系统
+
+项目使用 frozen dataclass 定义共享数据类型，存放于 `core/models/`：
+
+- `AnnouncementWithHash` — 公告与其去重哈希值的配对
+- `FileUploadRequest` — 文件上传请求参数
+- `FileUploadWithContent` — 带文件内容的上传请求
+- `FileUploadResult` — 上传结果（成功/失败状态）
+- `HashContent` / `HashContentWithHash` — 哈希记录数据结构
+
+类型定义原则：
+- 优先使用 frozen dataclass 而非 TypedDict，获得更好的类型检查与 IDE 支持
+- 跨模块共享的类型放入 `core/models/`，模块内部类型可在模块内定义
+- 使用 type alias 简化复杂类型签名（如 `UpdateRecordKey = Literal["business", "announcements"]`）
 
 ### 数据流方向
 
@@ -83,17 +118,18 @@ handler 模块负责编排以上流程，main.py 负责初始化与调度入口�
 ### 新增数据源接入模式
 
 1. 在 `core/data/` 下新建采集模块，封装接口调用与数据清洗
-2. 在 `core/` 下新建对应的 `*_data_handler.py` 编排流程
+2. 在 `core/handlers/` 下新建对应的 handler 模块（简单流程用单文件，复杂流程用子包）
 3. 复用 `core/db/` 的更新时间管理与去重哈希
-4. 复用 `core/notion/flow_databse.py` 创建数据流页面
+4. 复用 `core/notion/flow_database.py` 创建数据流页面
 5. 在 `main.py` 中注册调度入口
 
 ## Notion API 使用规范
 
 ### 属性映射
 
-- 页面属性键必须与 Notion 数据库 schema 完全一致（参考 `flow_databse.py` 中的 TYPE_MAPPING）
+- 页面属性键必须与 Notion 数据库 schema 完全一致（参考 `flow_database.py` 中的 TYPE_MAPPING）
 - 日期统一使用 NotionDate 类型别名（ISO-8601 字符串）
+- 日期转换使用 `convert_datetime_to_notion_date()` 和 `convert_notion_date_to_datetime()` 函数
 - 关联股票通过 relation 属性绑定到股票池数据源
 
 ### 文件上传策略
@@ -122,10 +158,12 @@ handler 模块负责编排以上流程，main.py 负责初始化与调度入口�
 
 ## 测试规范
 
-- 测试文件放在 `tests/` 目录，命名 `test_<模块名>.py`，与`core/`目录中的模块一一对应
+- 测试文件放在 `tests/` 目录，命名 `test_<模块名>.py`，与 `core/` 目录中的模块一一对应
 - 异步测试使用 `@pytest.mark.asyncio` 标记
-- 外部 API 调用使用静态资源 mock，静态资源通过访问真实资源下载后存储，并保存在 `tests/resource`中
+- 外部 API 调用使用静态资源 mock，静态资源通过访问真实资源下载后存储，并保存在 `tests/resource` 中
 - 关键路径（去重、更新时间策略、PDF 分割边界）必须有单元测试覆盖
+- 时间相关测试使用 `freezegun.freeze_time()` 冻结时间，避免直接 mock datetime 模块
+- Handler 模块测试路径应匹配新结构：`core.handlers.business`、`core.handlers.announcements` 等
 
 ## 性能约定
 
@@ -140,3 +178,5 @@ handler 模块负责编排以上流程，main.py 负责初始化与调度入口�
 - 优先复用已有工具函数（content_builder、db 接口、upload_file）
 - 新增功能应附带对应的测试用例
 - 涉及 Notion 属性变更时，同步检查 TYPE_MAPPING 的一致性
+- Handler 模块修改应遵循分层模式，保持各子模块职责单一
+- 新增共享类型时放入 `core/models/`，使用 frozen dataclass 定义

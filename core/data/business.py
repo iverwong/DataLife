@@ -52,17 +52,15 @@ async def get_business(stock_code: str) -> BusinessData:
     Returns:
         包含最新报告期主营构成数据的 BusinessData 对象。
     """
-    stock_logger = logger.bind(stock_code=stock_code)
     # 根据股票代码确定请求参数
     code = (
         f"SZ{stock_code}"
         if stock_code[0] == "0" or stock_code[0] == "3"
         else f"SH{stock_code}"
     )
-    stock_logger.info("获取股票{}的主营业务构成数据", stock_code)
+    logger.debug("获取主营构成: {}", stock_code)
     raw: object = await asyncio.to_thread(ak.stock_zygc_em, code)
     df = DataFrame(raw)
-    stock_logger.success("获取股票{}的主营业务构成数据成功", stock_code)
     report_date: date = df["报告日期"].max()  # pyright: ignore[reportAny]
     # 分行业
     industry_df: DataFrame = (
@@ -92,4 +90,5 @@ async def get_business(stock_code: str) -> BusinessData:
         .reset_index(drop=True)
     )
 
+    logger.debug("主营构成获取完成: {} ({})", stock_code, report_date)
     return BusinessData(report_date, industry_df, product_df, region_df)
