@@ -97,7 +97,6 @@ async def create_dataflow_page(
         properties["附件"] = FilesPropertyRequest(
             files=[FileItemUpload(file_upload=FileUploadReference(id=attachment_id))]
         )
-    task_logger = logger.bind(title=title, data_type=data_type)
     try:
         request = CreatePageRequest(
             parent=DataSourceParent(data_source_id=FLOW_DATABASE or ""),
@@ -105,10 +104,10 @@ async def create_dataflow_page(
             children=content,
         )
 
-        task_logger.debug("创建 Notion 页面: {}", title)
+        logger.debug("创建 Notion 页面: {}", title)
         await notion.pages.create(**request.model_dump(exclude_none=True))
-        task_logger.success("页面创建成功: {}", title)
+        logger.success("页面创建成功: {}", title)
         return True
     except Exception:
-        task_logger.exception("页面创建失败: {}", title)
+        logger.exception("页面创建失败: {}", title)
         return False

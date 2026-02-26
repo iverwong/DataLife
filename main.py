@@ -1,10 +1,9 @@
 # ruff: noqa: E402
 
 # 配置日志
-from core.logs import setup_logging, set_trace_id
+from core.logs import setup_logging
 
 setup_logging()
-set_trace_id()
 
 from loguru import logger
 

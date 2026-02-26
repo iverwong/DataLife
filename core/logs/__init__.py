@@ -10,9 +10,9 @@ import logging
 import secrets
 import sys
 from types import FrameType
-from typing import Any, override
+from typing import override
 
-from loguru import logger
+from loguru import Record, logger
 
 # 用于跨异步任务追踪的 trace_id
 _trace_id: contextvars.ContextVar[str] = contextvars.ContextVar("trace_id", default="")
@@ -33,11 +33,11 @@ def set_trace_id(trace_id: str | None = None) -> str:
         设置后的 trace_id。
     """
     tid = trace_id or secrets.token_hex(4)
-    _trace_id.set(tid)
+    _ = _trace_id.set(tid)
     return tid
 
 
-def _trace_id_patcher(record: dict[str, Any]) -> None:
+def _trace_id_patcher(record: Record) -> None:
     """为日志记录添加 trace_id 字段。"""
     record["extra"]["trace_id"] = get_trace_id()
 
@@ -52,7 +52,7 @@ def setup_logging() -> None:
     - 拦截标准 logging 输出统一为 loguru 格式
     """
     logger.remove()
-    logger.configure(patcher=_trace_id_patcher)
+    _ = logger.configure(patcher=_trace_id_patcher)
 
     # 控制台输出（彩色），生产环境使用 INFO 级别
     console_format = (

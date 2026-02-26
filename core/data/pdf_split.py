@@ -8,11 +8,11 @@ from io import BytesIO
 from typing import cast
 
 import httpx
-import pymupdf  # pyright: ignore[reportMissingTypeStubs]
+import pymupdf
 from loguru import logger
 
-from core.utils import gather_with_concurrency, get_pdf_download_semaphore
 from core.models.announcement import AnnouncementWithHash
+from core.utils import gather_with_concurrency, get_pdf_download_semaphore
 
 from .announcement import AnnouncementWithContent
 
@@ -72,7 +72,6 @@ async def _process_single_pdf(
         该 PDF 对应的公告内容列表（可能是单个或多个分割块）。
     """
     ann = item.announcement
-    task_logger = logger.bind(file=ann.title)
     result: list[tuple[AnnouncementWithContent, AnnouncementWithHash]] = []
 
     try:
@@ -89,11 +88,11 @@ async def _process_single_pdf(
                 published_date=ann.published_date,
                 content=pdf_content,
             )
-            task_logger.debug("PDF 无需分割: {} ({} 页)", ann.title, page_count)
+            logger.debug("PDF 无需分割: {} ({} 页)", ann.title, page_count)
             result.append((new_announcement, item))
         else:
             split_contents = _split_pdf_content(pdf_content)
-            task_logger.info(
+            logger.info(
                 "PDF 分割完成: {} ({} 页 -> {} 块)",
                 ann.title,
                 page_count,
@@ -117,7 +116,7 @@ async def _process_single_pdf(
                 result.append((new_announcement, item))
 
     except Exception:
-        task_logger.exception("PDF 分割失败: {}", ann.title)
+        logger.exception("PDF 分割失败: {}", ann.title)
         # 分割失败时保留原始公告（空内容），仍关联原始哈希
         fallback = AnnouncementWithContent(
             id=ann.id,

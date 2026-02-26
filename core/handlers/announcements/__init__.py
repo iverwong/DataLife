@@ -7,6 +7,7 @@
 from loguru import logger
 
 from core.db import save_hash, set_update_time
+from core.logs import set_trace_id
 from core.notion.datetime_helper import convert_datetime_to_notion_date
 from core.notion.stock_pool import StockPool
 
@@ -27,19 +28,19 @@ async def process_announcements_for_stock_list(
         stock_list: 待处理的股票列表。
     """
     codes = [s.code for s in stock_list]
-    task_logger = logger.bind(stocks=",".join(codes))
-    task_logger.info("开始处理公告数据，共 {} 只股票", len(stock_list))
+    set_trace_id("ann-" + "-".join(codes))
+    logger.info("开始处理公告数据，共 {} 只股票", len(stock_list))
 
     # 1. 获取公告数据
     announcements, today = await fetch_announcements_for_stocks(stock_list)
     if not announcements:
-        task_logger.info("无公告数据，跳过处理")
+        logger.info("无公告数据，跳过处理")
         return
 
     # 2. 哈希去重
     deduped = await deduplicate_announcements(announcements)
     if not deduped:
-        task_logger.info("公告均已存在，跳过处理")
+        logger.info("公告均已存在，跳过处理")
         return
 
     # 3. 分类并上传文件
@@ -64,7 +65,7 @@ async def process_announcements_for_stock_list(
             update_time=convert_datetime_to_notion_date(today),
         )
 
-    task_logger.success("公告数据处理完成")
+    logger.success("公告数据处理完成")
 
 
 __all__ = ["process_announcements_for_stock_list"]

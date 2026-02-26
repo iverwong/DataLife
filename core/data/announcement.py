@@ -85,10 +85,8 @@ async def get_announcements(
     if len(stock_list) == 0:
         logger.warning("股票列表为空，跳过获取公告信息")
         return []
-    task_logger = logger.bind(
-        stocks=",".join(stock_list), start=str(start_date), end=str(end_date)
-    )
-    task_logger.info("开始获取公告，股票: {}", stock_list)
+
+    logger.info("开始获取公告，股票: {}，范围: {} ~ {}", stock_list, start_date, end_date)
 
     url = "http://www.cninfo.com.cn/new/hisAnnouncement/query"
 
@@ -117,12 +115,12 @@ async def get_announcements(
         try:
             _ = res.raise_for_status()
         except httpx.HTTPStatusError:
-            task_logger.exception("获取公告请求失败")
+            logger.exception("获取公告请求失败")
             return []
         first_page = AnnouncementsResponse.model_validate(res.json())
 
         if first_page.totalAnnouncement == 0:
-            task_logger.info("未获取到公告数据")
+            logger.info("未获取到公告数据")
             return []
 
         # 处理 announcements 为 None 的情况
@@ -130,7 +128,7 @@ async def get_announcements(
         # 使用接口返回的totalpages参数获取**剩余**页数
         page_count = first_page.totalpages
 
-        task_logger.debug("首页返回 {} 条，总页数 {}", len(announcements), page_count)
+        logger.debug("首页返回 {} 条，总页数 {}", len(announcements), page_count)
         for i in range(page_count):
             payload["pageNum"] = str(i + 2)
             res = await client.post(url, params=payload)
@@ -146,7 +144,7 @@ async def get_announcements(
     ]
 
     result = [_convert_item_to_announcement(item) for item in filtered]
-    task_logger.success(
+    logger.success(
         "公告获取完成，原始 {} 条，过滤后 {} 条", before_filter_count, len(result)
     )
     return result

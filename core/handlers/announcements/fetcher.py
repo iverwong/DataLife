@@ -33,8 +33,7 @@ async def fetch_announcements_for_stocks(
         元组 (公告列表, 当天日期)。当天日期用于后续更新时间记录。
     """
     codes = [s.code for s in stock_list]
-    task_logger = logger.bind(stocks=",".join(codes))
-    task_logger.info("开始获取公告数据，共 {} 只股票", len(stock_list))
+    logger.info("开始获取公告数据，共 {} 只股票", len(stock_list))
 
     update_times = await get_update_time(codes, "announcements")
 
@@ -61,7 +60,7 @@ async def fetch_announcements_for_stocks(
         tasks.append(get_announcements(codes, start_date, end_date))
 
     if not tasks:
-        task_logger.info("无需查询公告")
+        logger.info("无需查询公告")
         return [], today
 
     # 使用并发控制执行所有任务
@@ -71,9 +70,9 @@ async def fetch_announcements_for_stocks(
     announcements: list[Announcement] = []
     for result in results:
         if isinstance(result, BaseException):
-            task_logger.error("获取公告异常: {}", type(result).__name__)
+            logger.error("获取公告异常: {}", type(result).__name__)
             continue
         announcements.extend(result)
 
-    task_logger.success("公告获取完成，共 {} 条", len(announcements))
+    logger.success("公告获取完成，共 {} 条", len(announcements))
     return announcements, today

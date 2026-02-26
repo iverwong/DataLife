@@ -7,7 +7,12 @@ import asyncio
 
 from loguru import logger
 
-from core.models.upload import FileUploadRequest, FileUploadResult, FileUploadWithContent
+from core.logs import set_trace_id
+from core.models.upload import (
+    FileUploadRequest,
+    FileUploadResult,
+    FileUploadWithContent,
+)
 
 from .client import notion
 from .models import FileImportError, FileUploadResponse
@@ -83,9 +88,9 @@ async def _upload_internal_and_wait(
     Returns:
         单个文件的上传结果。
     """
-    task_logger = logger.bind(file=file_info.title)
+    _ = set_trace_id(f"up-{file_info.stock}")
 
-    task_logger.debug("创建 Notion 上传对象: {}", file_info.title)
+    logger.debug("创建 Notion 上传对象: {}", file_info.title)
     create_result = FileUploadResponse.model_validate(
         await notion.file_uploads.create(
             filename=file_info.title + ".PDF", content_type="application/pdf"
@@ -104,12 +109,12 @@ async def _upload_internal_and_wait(
         send_result = FileUploadResponse.model_validate(send_raw)
         if send_result.status == "uploaded":
             file_succeeded = True
-            task_logger.success("上传成功: {} ({})", file_info.title, file_id)
+            logger.success("上传成功: {} ({})", file_info.title, file_id)
         else:
             file_error = _extract_upload_error(send_result) or "未知错误"
-            task_logger.error("上传失败: {} - {}", file_info.title, file_error)
+            logger.error("上传失败: {} - {}", file_info.title, file_error)
     except Exception as e:
-        task_logger.error("上传异常: {} - {}", file_info.title, e)
+        logger.error("上传异常: {} - {}", file_info.title, e)
         file_error = str(e)
 
     return FileUploadResult(
@@ -191,8 +196,8 @@ async def _upload_external_and_wait(file_info: FileUploadRequest) -> FileUploadR
     Returns:
         单个文件的上传结果。
     """
-    task_logger = logger.bind(file=file_info.title)
-    task_logger.debug("外链上传: {}", file_info.title)
+    _ = set_trace_id(f"up-{file_info.stock}")
+    logger.debug("外链上传: {}", file_info.title)
     try:
         create_raw = await notion.file_uploads.create(  # pyright: ignore[reportAny]
             mode="external_url",
@@ -205,7 +210,7 @@ async def _upload_external_and_wait(file_info: FileUploadRequest) -> FileUploadR
         poll_result = await _poll_upload_status(file_id, file_info.title)
 
         if poll_result.status == "uploaded":
-            task_logger.success("外链上传成功: {} ({})", file_info.title, file_id)
+            logger.success("外链上传成功: {} ({})", file_info.title, file_id)
             return FileUploadResult(
                 stock=file_info.stock,
                 url=file_info.url,
@@ -218,7 +223,7 @@ async def _upload_external_and_wait(file_info: FileUploadRequest) -> FileUploadR
             )
 
         error_msg = _extract_upload_error(poll_result) or "轮询超时"
-        task_logger.error("外链上传失败: {} - {}", file_info.title, error_msg)
+        logger.error("外链上传失败: {} - {}", file_info.title, error_msg)
         return FileUploadResult(
             stock=file_info.stock,
             url=file_info.url,
@@ -231,7 +236,7 @@ async def _upload_external_and_wait(file_info: FileUploadRequest) -> FileUploadR
         )
 
     except Exception as e:
-        task_logger.error("外链上传异常: {} - {}", file_info.title, e)
+        logger.error("外链上传异常: {} - {}", file_info.title, e)
         return FileUploadResult(
             stock=file_info.stock,
             url=file_info.url,
@@ -278,7 +283,6 @@ async def _poll_upload_status(
     Returns:
         最终的文件上传状态响应（uploaded/failed/超时）。
     """
-    task_logger = logger.bind(file_id=file_id, file=filename)
     intervals = [1, 2, 4, 8, 16]
 
     for attempt in range(max_attempts):
@@ -287,13 +291,13 @@ async def _poll_upload_status(
         )
 
         if response.status in ("uploaded", "failed"):
-            task_logger.debug(
+            logger.debug(
                 "轮询完成: {} 状态={} (尝试 {})", filename, response.status, attempt + 1
             )
             return response
 
         wait_time = intervals[min(attempt, len(intervals) - 1)]
-        task_logger.debug(
+        logger.debug(
             "轮询中: {} 状态={}，等待 {}s (尝试 {}/{})",
             filename,
             response.status,
@@ -303,7 +307,7 @@ async def _poll_upload_status(
         )
         await asyncio.sleep(wait_time)
 
-    task_logger.warning("轮询超时: {} ({})", filename, file_id)
+    logger.warning("轮询超时: {} ({})", filename, file_id)
     return FileUploadResponse(
         id=file_id,
         created_time="",

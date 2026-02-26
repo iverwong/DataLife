@@ -31,32 +31,31 @@ async def get_stock_pool() -> list[StockPool]:
         Exception: 获取股票池信息失败时抛出。
     """
     stock_pool_id = os.getenv("STOCK_POOL") or ""
-    task_logger = logger.bind(data_source_id=stock_pool_id)
-    task_logger.info("查询股票池数据源")
+    logger.info("查询股票池数据源")
     try:
         raw_response = await notion.data_sources.query(stock_pool_id)  # pyright: ignore[reportAny]
         if not raw_response:
-            task_logger.error("获取股票池失败: 响应为空")
+            logger.error("获取股票池失败: 响应为空")
             raise Exception("获取股票池信息失败")
 
         response = QueryDataSourceResponse.model_validate(raw_response)
 
         if not response.results:
-            task_logger.warning("股票池为空")
+            logger.warning("股票池为空")
             return []
 
         stock_pages: list[StockPool] = []
         for result in response.results:
             prop = result.properties.get("股票代码")
             if not isinstance(prop, RichTextPropertyResponse) or not prop.rich_text:
-                task_logger.warning("页面 {} 的 '股票代码' 属性异常，已跳过", result.id)
+                logger.warning("页面 {} 的 '股票代码' 属性异常，已跳过", result.id)
                 continue
             stock_pages.append(
                 StockPool(id=result.id, code=prop.rich_text[0].plain_text or "")
             )
 
-        task_logger.success("获取股票池完成，共 {} 只股票", len(stock_pages))
+        logger.success("获取股票池完成，共 {} 只股票", len(stock_pages))
         return stock_pages
     except Exception:
-        task_logger.exception("获取股票池失败")
+        logger.exception("获取股票池失败")
         raise
