@@ -8,7 +8,7 @@ from datetime import date, datetime
 from functools import lru_cache
 
 import httpx
-from loguru import logger
+import logfire
 
 from .models import AnnouncementItem, AnnouncementsResponse, StockListResponse
 
@@ -83,10 +83,10 @@ async def get_announcements(
     """
 
     if len(stock_list) == 0:
-        logger.warning("股票列表为空，跳过获取公告信息")
+        logfire.warn("股票列表为空，跳过获取公告信息")
         return []
 
-    logger.info("开始获取公告，股票: {}，范围: {} ~ {}", stock_list, start_date, end_date)
+    logfire.info("开始获取公告，股票: {stock_list}，范围: {start} ~ {end}", stock_list=stock_list, start=start_date, end=end_date)
 
     url = "http://www.cninfo.com.cn/new/hisAnnouncement/query"
 
@@ -115,12 +115,12 @@ async def get_announcements(
         try:
             _ = res.raise_for_status()
         except httpx.HTTPStatusError:
-            logger.exception("获取公告请求失败")
+            logfire.exception("获取公告请求失败")
             return []
         first_page = AnnouncementsResponse.model_validate(res.json())
 
         if first_page.totalAnnouncement == 0:
-            logger.info("未获取到公告数据")
+            logfire.info("未获取到公告数据")
             return []
 
         # 处理 announcements 为 None 的情况
@@ -128,7 +128,7 @@ async def get_announcements(
         # 使用接口返回的totalpages参数获取**剩余**页数
         page_count = first_page.totalpages
 
-        logger.debug("首页返回 {} 条，总页数 {}", len(announcements), page_count)
+        logfire.debug("首页返回 {count} 条，总页数 {page_count}", count=len(announcements), page_count=page_count)
         for i in range(page_count):
             payload["pageNum"] = str(i + 2)
             res = await client.post(url, params=payload)
@@ -144,8 +144,8 @@ async def get_announcements(
     ]
 
     result = [_convert_item_to_announcement(item) for item in filtered]
-    logger.success(
-        "公告获取完成，原始 {} 条，过滤后 {} 条", before_filter_count, len(result)
+    logfire.info(
+        "公告获取完成，原始 {before} 条，过滤后 {after} 条", before=before_filter_count, after=len(result)
     )
     return result
 

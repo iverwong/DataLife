@@ -9,7 +9,7 @@ from typing import cast
 
 import httpx
 import pymupdf
-from loguru import logger
+import logfire
 
 from core.models.announcement import AnnouncementWithHash
 from core.utils import gather_with_concurrency, get_pdf_download_semaphore
@@ -43,7 +43,7 @@ async def split_pdf(
     if not announcement_list:
         return []
 
-    logger.info("开始并发处理 {} 个 PDF 文件", len(announcement_list))
+    logfire.info("开始并发处理 {count} 个 PDF 文件", count=len(announcement_list))
 
     # 构建协程列表
     tasks = [_process_single_pdf(item) for item in announcement_list]
@@ -56,7 +56,7 @@ async def split_pdf(
     for item_results in results:
         flattened.extend(item_results)
 
-    logger.success("PDF 处理完成，共生成 {} 个文件块", len(flattened))
+    logfire.info("PDF 处理完成，共生成 {count} 个文件块", count=len(flattened))
     return flattened
 
 
@@ -88,15 +88,17 @@ async def _process_single_pdf(
                 published_date=ann.published_date,
                 content=pdf_content,
             )
-            logger.debug("PDF 无需分割: {} ({} 页)", ann.title, page_count)
+            logfire.debug(
+                "PDF 无需分割: {title} ({count} 页)", title=ann.title, count=page_count
+            )
             result.append((new_announcement, item))
         else:
             split_contents = _split_pdf_content(pdf_content)
-            logger.info(
-                "PDF 分割完成: {} ({} 页 -> {} 块)",
-                ann.title,
-                page_count,
-                len(split_contents),
+            logfire.info(
+                "PDF 分割完成: {title} ({pages} 页 -> {chunks} 块)",
+                title=ann.title,
+                pages=page_count,
+                chunks=len(split_contents),
             )
 
             for i, content in enumerate(split_contents):
@@ -116,7 +118,7 @@ async def _process_single_pdf(
                 result.append((new_announcement, item))
 
     except Exception:
-        logger.exception("PDF 分割失败: {}", ann.title)
+        logfire.exception("PDF 分割失败: {title}", title=ann.title)
         # 分割失败时保留原始公告（空内容），仍关联原始哈希
         fallback = AnnouncementWithContent(
             id=ann.id,
@@ -147,8 +149,8 @@ async def _download_pdf(url: str) -> bytes:
     """
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.get(url)
-        response.raise_for_status()
-        logger.debug("PDF 下载完成: {}", url)
+        _ = response.raise_for_status()
+        logfire.debug("PDF 下载完成: {url}", url=url)
         return response.content
 
 

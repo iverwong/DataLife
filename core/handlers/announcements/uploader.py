@@ -6,7 +6,7 @@
 import asyncio
 from dataclasses import dataclass
 
-from loguru import logger
+import logfire
 
 from core.data import split_pdf
 from core.models.announcement import AnnouncementWithHash
@@ -68,8 +68,8 @@ async def upload_announcement_files(
         else:
             small_files.append(item)
 
-    logger.info(
-        "公告分类: 外链 {} 个，分割上传 {} 个", len(small_files), len(large_files)
+    logfire.info(
+        "公告分类: 外链 {small} 个，分割上传 {large} 个", small=len(small_files), large=len(large_files)
     )
 
     # 构建外链上传请求并启动任务
@@ -143,6 +143,6 @@ def _categorize_upload_results(
             failed.extend(group)
 
     if failed:
-        logger.error("上传失败: {}", [f.title for f in failed])
+        logfire.error("上传失败: {titles}", titles=[f.title for f in failed])
 
     return succeeded, failed

@@ -5,11 +5,10 @@
 
 from datetime import datetime
 
-from loguru import logger
+import logfire
 
 from core.data import get_business
 from core.db import HashContent, HashContentWithHash, check_hash, get_update_time, save_hash, set_update_time
-from core.logs import set_trace_id
 from core.models import NotionDate
 from core.notion import (
     NotionContentBuilder,
@@ -29,72 +28,71 @@ async def process_business_data_for_stock_list(stock_list: list[StockPool]) -> N
         stock_list: 待处理的股票列表。
     """
     codes = [stock.code for stock in stock_list]
-    logger.info("开始处理主营构成数据，共 {} 只股票", len(stock_list))
+    logfire.info("开始处理主营构成数据，共 {count} 只股票", count=len(stock_list))
 
     update_times = await get_update_time(codes, "business")
 
     for stock_pool in stock_list:
         stock_code = stock_pool.code
         stock_id = stock_pool.id
-        set_trace_id(f"biz-{stock_code}")
+        with logfire.span("process_stock", stock_code=stock_code):
+            # 如果半年数据还没到下个半年，则跳过更新
+            if not _should_update_half_year(update_times[stock_code]):
+                logfire.debug("主营构成数据未到更新周期，跳过")
+                continue
 
-        # 如果半年数据还没到下个半年，则跳过更新
-        if not _should_update_half_year(update_times[stock_code]):
-            logger.debug("主营构成数据未到更新周期，跳过")
-            continue
+            try:
+                business_data = await get_business(stock_code)
+            except Exception:
+                logfire.exception("获取主营构成数据失败")
+                continue
 
-        try:
-            business_data = await get_business(stock_code)
-        except Exception:
-            logger.exception("获取主营构成数据失败")
-            continue
-
-        # 构建去重内容
-        hash_content = HashContent(
-            data_type="business",
-            content=f"{stock_code}-{business_data.report_date}-主营构成",
-        )
-
-        # 检查是否已存在
-        filtered: list[HashContentWithHash] = await check_hash([hash_content])
-        if not filtered:
-            logger.debug("主营构成数据已存在，跳过")
-            continue
-
-        # 构建页面内容
-        content = (
-            NotionContentBuilder()
-            .add_heading("按行业分类", level=3)
-            .add_table_from_dataframe(business_data.industry_df)
-            .add_heading("按产品分类", level=3)
-            .add_table_from_dataframe(business_data.product_df)
-            .add_heading("按地区分类", level=3)
-            .add_table_from_dataframe(business_data.region_df)
-        )
-
-        logger.info(
-            "创建主营构成页面: {} ({})", stock_code, business_data.report_date
-        )
-
-        page_result = await create_dataflow_page(
-            title=f"{stock_code}-{business_data.report_date}-主营构成",
-            published_date=business_data.report_date,
-            source_api=f"{get_business.__module__}.{get_business.__name__}",
-            data_type="主营构成",
-            relation=stock_id,
-            content=content.build(),
-        )
-
-        if page_result:
-            logger.success("主营构成页面创建成功: {}", stock_code)
-            await save_hash([each.hash_value for each in filtered])
-            await set_update_time(
-                stock_code,
-                "business",
-                update_time=convert_datetime_to_notion_date(business_data.report_date),
+            # 构建去重内容
+            hash_content = HashContent(
+                data_type="business",
+                content=f"{stock_code}-{business_data.report_date}-主营构成",
             )
-        else:
-            logger.error("主营构成页面创建失败: {}", stock_code)
+
+            # 检查是否已存在
+            filtered: list[HashContentWithHash] = await check_hash([hash_content])
+            if not filtered:
+                logfire.debug("主营构成数据已存在，跳过")
+                continue
+
+            # 构建页面内容
+            content = (
+                NotionContentBuilder()
+                .add_heading("按行业分类", level=3)
+                .add_table_from_dataframe(business_data.industry_df)
+                .add_heading("按产品分类", level=3)
+                .add_table_from_dataframe(business_data.product_df)
+                .add_heading("按地区分类", level=3)
+                .add_table_from_dataframe(business_data.region_df)
+            )
+
+            logfire.info(
+                "创建主营构成页面: {stock_code} ({report_date})", stock_code=stock_code, report_date=business_data.report_date
+            )
+
+            page_result = await create_dataflow_page(
+                title=f"{stock_code}-{business_data.report_date}-主营构成",
+                published_date=business_data.report_date,
+                source_api=f"{get_business.__module__}.{get_business.__name__}",
+                data_type="主营构成",
+                relation=stock_id,
+                content=content.build(),
+            )
+
+            if page_result:
+                logfire.info("主营构成页面创建成功: {stock_code}", stock_code=stock_code)
+                await save_hash([each.hash_value for each in filtered])
+                await set_update_time(
+                    stock_code,
+                    "business",
+                    update_time=convert_datetime_to_notion_date(business_data.report_date),
+                )
+            else:
+                logfire.error("主营构成页面创建失败: {stock_code}", stock_code=stock_code)
 
 
 def _should_update_half_year(last_update_str: NotionDate | None) -> bool:
@@ -126,7 +124,7 @@ def _should_update_half_year(last_update_str: NotionDate | None) -> bool:
     elif month == 12 and day == 31:  # Q4
         next_query_date = datetime(year + 1, 7, 1)
     else:
-        logger.warning("非季度末日期 {}，请排查数据", last_update_str)
+        logfire.warn("非季度末日期 {date}，请排查数据", date=last_update_str)
         return False
 
     now = datetime.now()

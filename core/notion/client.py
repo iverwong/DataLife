@@ -8,7 +8,7 @@ from typing import override
 import os
 
 import httpx
-from loguru import logger
+import logfire
 from notion_client import AsyncClient
 
 from typing import ParamSpecKwargs
@@ -30,8 +30,8 @@ class AsyncRateLimitedTransport(httpx.AsyncHTTPTransport):
         self._limiter: AsyncLimiter = AsyncLimiter(
             max_rate=max_rate, time_period=time_period
         )
-        logger.debug(
-            "速率限制器初始化: {:.1f} 请求/秒", max_rate / time_period
+        logfire.debug(
+            "速率限制器初始化: {rate:.1f} 请求/秒", rate=max_rate / time_period
         )
 
     @override
@@ -54,4 +54,4 @@ httpx_client = httpx.AsyncClient(
 )
 
 notion = AsyncClient(client=httpx_client, auth=os.getenv("NOTION_TOKEN"))
-logger.debug("Notion AsyncClient 初始化完成")
+logfire.debug("Notion AsyncClient 初始化完成")

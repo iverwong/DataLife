@@ -7,10 +7,10 @@
 """
 
 import asyncio
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Sequence
 from typing import TypeVar
 
-from loguru import logger
+import logfire
 
 # 巨潮资讯网 API 并发限制
 CNINFO_CONCURRENCY = 5
@@ -36,7 +36,7 @@ def get_cninfo_semaphore() -> asyncio.Semaphore:
     global _cninfo_semaphore
     if _cninfo_semaphore is None:
         _cninfo_semaphore = asyncio.Semaphore(CNINFO_CONCURRENCY)
-        logger.debug("巨潮 API 并发限制器初始化: 最大 {} 并发", CNINFO_CONCURRENCY)
+        logfire.debug("巨潮 API 并发限制器初始化: 最大 {count} 并发", count=CNINFO_CONCURRENCY)
     return _cninfo_semaphore
 
 
@@ -51,7 +51,7 @@ def get_pdf_download_semaphore() -> asyncio.Semaphore:
     global _pdf_download_semaphore
     if _pdf_download_semaphore is None:
         _pdf_download_semaphore = asyncio.Semaphore(PDF_DOWNLOAD_CONCURRENCY)
-        logger.debug("PDF 下载并发限制器初始化: 最大 {} 并发", PDF_DOWNLOAD_CONCURRENCY)
+        logfire.debug("PDF 下载并发限制器初始化: 最大 {count} 并发", count=PDF_DOWNLOAD_CONCURRENCY)
     return _pdf_download_semaphore
 
 
@@ -77,7 +77,7 @@ async def with_concurrency_limit(
 
 async def gather_with_concurrency(
     semaphore: asyncio.Semaphore,
-    tasks: list[Awaitable[T]],
+    tasks: Sequence[Awaitable[T]],
 ) -> list[T]:
     """在并发限制下批量执行协程。
 
@@ -94,7 +94,7 @@ async def gather_with_concurrency(
 
 async def gather_with_concurrency_and_exceptions(
     semaphore: asyncio.Semaphore,
-    tasks: list[Awaitable[T]],
+    tasks: Sequence[Awaitable[T]],
 ) -> list[T | BaseException]:
     """在并发限制下批量执行协程，允许异常返回。
 
@@ -117,7 +117,7 @@ def reset_semaphores() -> None:
     global _cninfo_semaphore, _pdf_download_semaphore
     _cninfo_semaphore = None
     _pdf_download_semaphore = None
-    logger.debug("并发限制器已重置")
+    logfire.debug("并发限制器已重置")
 
 
 __all__ = [

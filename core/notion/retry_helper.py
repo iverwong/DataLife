@@ -11,7 +11,7 @@ from collections.abc import Awaitable, Coroutine
 from typing import ParamSpec, TypeVar, Callable
 from notion_client.errors import RequestTimeoutError
 import httpx
-from loguru import logger
+import logfire
 
 P = ParamSpec("P")
 T = TypeVar("T")
@@ -67,27 +67,27 @@ def with_retry(
                     if attempt > 0:
                         # 指数退避：1s, 2s, 4s, 8s...
                         delay = RETRY_DELAY_BASE * (2.0 ** (attempt - 1))
-                        logger.debug(
-                            "重试 {}: {}/{} (等待 {:.1f}s)",
-                            func.__name__,
-                            attempt,
-                            max_retries,
-                            delay,
+                        logfire.debug(
+                            "重试 {func}: {attempt}/{max_retries} (等待 {delay:.1f}s)",
+                            func=func.__name__,
+                            attempt=attempt,
+                            max_retries=max_retries,
+                            delay=delay,
                         )
                         await asyncio.sleep(delay)
                     return await func(*args, **kwargs)
                 except retryable_exceptions as e:
                     last_exception = e
                     if attempt >= max_retries:
-                        logger.warning(
-                            "重试耗尽 {}: {} (已尝试 {} 次)",
-                            func.__name__,
-                            type(e).__name__,
-                            max_retries + 1,
+                        logfire.warn(
+                            "重试耗尽 {func}: {error_type} (已尝试 {count} 次)",
+                            func=func.__name__,
+                            error_type=type(e).__name__,
+                            count=max_retries + 1,
                         )
                         raise
                 except Exception:
-                    logger.exception("非重试异常 {}", func.__name__)
+                    logfire.exception("非重试异常 {func}", func=func.__name__)
                     raise
             raise last_exception
 

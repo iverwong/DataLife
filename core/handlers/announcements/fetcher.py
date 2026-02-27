@@ -3,11 +3,12 @@
 负责从数据库获取更新时间、按日期分组股票、并发获取公告数据。
 """
 
+from collections.abc import Awaitable, Sequence
 from collections import defaultdict
 from datetime import date
 
 from dateutil.relativedelta import relativedelta
-from loguru import logger
+import logfire
 
 from core.utils import gather_with_concurrency_and_exceptions, get_cninfo_semaphore
 from core.data.announcement import Announcement
@@ -33,12 +34,12 @@ async def fetch_announcements_for_stocks(
         元组 (公告列表, 当天日期)。当天日期用于后续更新时间记录。
     """
     codes = [s.code for s in stock_list]
-    logger.info("开始获取公告数据，共 {} 只股票", len(stock_list))
+    logfire.info("开始获取公告数据，共 {count} 只股票", count=len(stock_list))
 
     update_times = await get_update_time(codes, "announcements")
 
     today = date.today()
-    tasks: list = []
+    tasks: Sequence[Awaitable[list[Announcement]]] = []
 
     # 从未查询过的股票：从一年前开始
     init_stocks = [code for code, value in update_times.items() if value is None]
@@ -60,7 +61,7 @@ async def fetch_announcements_for_stocks(
         tasks.append(get_announcements(codes, start_date, end_date))
 
     if not tasks:
-        logger.info("无需查询公告")
+        logfire.info("无需查询公告")
         return [], today
 
     # 使用并发控制执行所有任务
@@ -70,9 +71,9 @@ async def fetch_announcements_for_stocks(
     announcements: list[Announcement] = []
     for result in results:
         if isinstance(result, BaseException):
-            logger.error("获取公告异常: {}", type(result).__name__)
+            logfire.error("获取公告异常: {error_type}", error_type=type(result).__name__)
             continue
         announcements.extend(result)
 
-    logger.success("公告获取完成，共 {} 条", len(announcements))
+    logfire.info("公告获取完成，共 {count} 条", count=len(announcements))
     return announcements, today

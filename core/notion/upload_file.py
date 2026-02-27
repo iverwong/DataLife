@@ -5,9 +5,8 @@
 
 import asyncio
 
-from loguru import logger
+import logfire
 
-from core.logs import set_trace_id
 from core.models.upload import (
     FileUploadRequest,
     FileUploadResult,
@@ -38,14 +37,14 @@ async def upload_files_with_local(
 
     while pending_files and attempt <= max_retries:
         if attempt > 0:
-            logger.warning(
-                "本地上传重试 {}/{}，待处理 {} 个",
-                attempt,
-                max_retries,
-                len(pending_files),
+            logfire.warn(
+                "本地上传重试 {attempt}/{max_retries}，待处理 {count} 个",
+                attempt=attempt,
+                max_retries=max_retries,
+                count=len(pending_files),
             )
         else:
-            logger.info("开始本地上传，共 {} 个文件", len(pending_files))
+            logfire.info("开始本地上传，共 {count} 个文件", count=len(pending_files))
 
         upload_tasks = [_upload_internal_and_wait(each) for each in pending_files]
         batch_results: list[FileUploadResult] = await asyncio.gather(*upload_tasks)
@@ -60,18 +59,18 @@ async def upload_files_with_local(
             pending_files = [f for f in file_list if f.url in failed_urls]
         else:
             if failed:
-                logger.error(
-                    "本地上传最终失败 {} 个: {}", len(failed), [f.title for f in failed]
+                logfire.error(
+                    "本地上传最终失败 {count} 个: {titles}", count=len(failed), titles=[f.title for f in failed]
                 )
             all_results.extend(failed)
             pending_files = []
 
         attempt += 1
 
-    logger.info(
-        "本地上传完成，成功 {}/{}",
-        sum(1 for f in all_results if f.succeeded),
-        len(all_results),
+    logfire.info(
+        "本地上传完成，成功 {success}/{total}",
+        success=sum(1 for f in all_results if f.succeeded),
+        total=len(all_results),
     )
     return all_results
 
@@ -88,9 +87,8 @@ async def _upload_internal_and_wait(
     Returns:
         单个文件的上传结果。
     """
-    _ = set_trace_id(f"up-{file_info.stock}")
-
-    logger.debug("创建 Notion 上传对象: {}", file_info.title)
+    with logfire.span("上传文件", stock=file_info.stock, title=file_info.title):
+        logfire.debug("创建 Notion 上传对象: {title}", title=file_info.title)
     create_result = FileUploadResponse.model_validate(
         await notion.file_uploads.create(
             filename=file_info.title + ".PDF", content_type="application/pdf"
@@ -109,12 +107,12 @@ async def _upload_internal_and_wait(
         send_result = FileUploadResponse.model_validate(send_raw)
         if send_result.status == "uploaded":
             file_succeeded = True
-            logger.success("上传成功: {} ({})", file_info.title, file_id)
+            logfire.info("上传成功: {title} ({file_id})", title=file_info.title, file_id=file_id)
         else:
             file_error = _extract_upload_error(send_result) or "未知错误"
-            logger.error("上传失败: {} - {}", file_info.title, file_error)
+            logfire.error("上传失败: {title} - {error}", title=file_info.title, error=file_error)
     except Exception as e:
-        logger.error("上传异常: {} - {}", file_info.title, e)
+        logfire.error("上传异常: {title} - {error}", title=file_info.title, error=e)
         file_error = str(e)
 
     return FileUploadResult(
@@ -148,14 +146,14 @@ async def upload_files_with_url(
 
     while pending_files and attempt <= max_retries:
         if attempt > 0:
-            logger.warning(
-                "外链上传重试 {}/{}，待处理 {} 个",
-                attempt,
-                max_retries,
-                len(pending_files),
+            logfire.warn(
+                "外链上传重试 {attempt}/{max_retries}，待处理 {count} 个",
+                attempt=attempt,
+                max_retries=max_retries,
+                count=len(pending_files),
             )
         else:
-            logger.info("开始外链上传，共 {} 个文件", len(pending_files))
+            logfire.info("开始外链上传，共 {count} 个文件", count=len(pending_files))
 
         upload_tasks = [_upload_external_and_wait(each) for each in pending_files]
         batch_results: list[FileUploadResult] = await asyncio.gather(*upload_tasks)
@@ -170,18 +168,18 @@ async def upload_files_with_url(
             pending_files = [f for f in file_list if f.url in failed_urls]
         else:
             if failed:
-                logger.error(
-                    "外链上传最终失败 {} 个: {}", len(failed), [f.title for f in failed]
+                logfire.error(
+                    "外链上传最终失败 {count} 个: {titles}", count=len(failed), titles=[f.title for f in failed]
                 )
             all_results.extend(failed)
             pending_files = []
 
         attempt += 1
 
-    logger.success(
-        "外链上传完成，成功 {}/{}",
-        sum(1 for f in all_results if f.succeeded),
-        len(all_results),
+    logfire.info(
+        "外链上传完成，成功 {success}/{total}",
+        success=sum(1 for f in all_results if f.succeeded),
+        total=len(all_results),
     )
     return all_results
 
@@ -196,8 +194,8 @@ async def _upload_external_and_wait(file_info: FileUploadRequest) -> FileUploadR
     Returns:
         单个文件的上传结果。
     """
-    _ = set_trace_id(f"up-{file_info.stock}")
-    logger.debug("外链上传: {}", file_info.title)
+    with logfire.span("外链上传", stock=file_info.stock, title=file_info.title):
+        logfire.debug("外链上传: {title}", title=file_info.title)
     try:
         create_raw = await notion.file_uploads.create(  # pyright: ignore[reportAny]
             mode="external_url",
@@ -210,7 +208,7 @@ async def _upload_external_and_wait(file_info: FileUploadRequest) -> FileUploadR
         poll_result = await _poll_upload_status(file_id, file_info.title)
 
         if poll_result.status == "uploaded":
-            logger.success("外链上传成功: {} ({})", file_info.title, file_id)
+            logfire.info("外链上传成功: {title} ({file_id})", title=file_info.title, file_id=file_id)
             return FileUploadResult(
                 stock=file_info.stock,
                 url=file_info.url,
@@ -223,7 +221,7 @@ async def _upload_external_and_wait(file_info: FileUploadRequest) -> FileUploadR
             )
 
         error_msg = _extract_upload_error(poll_result) or "轮询超时"
-        logger.error("外链上传失败: {} - {}", file_info.title, error_msg)
+        logfire.error("外链上传失败: {title} - {error}", title=file_info.title, error=error_msg)
         return FileUploadResult(
             stock=file_info.stock,
             url=file_info.url,
@@ -236,7 +234,7 @@ async def _upload_external_and_wait(file_info: FileUploadRequest) -> FileUploadR
         )
 
     except Exception as e:
-        logger.error("外链上传异常: {} - {}", file_info.title, e)
+        logfire.error("外链上传异常: {title} - {error}", title=file_info.title, error=e)
         return FileUploadResult(
             stock=file_info.stock,
             url=file_info.url,
@@ -263,8 +261,8 @@ def _extract_upload_error(response: FileUploadResponse) -> str | None:
         return None
     if isinstance(file_import_result, FileImportError):
         return file_import_result.error.message
-    logger.error(
-        "收到了状态不为 `uploaded` 但文件导入结果不为 `error` 的报文：{}", response
+    logfire.error(
+        "收到了状态不为 `uploaded` 但文件导入结果不为 `error` 的报文：{response}", response=response
     )
     return None
 
@@ -291,23 +289,23 @@ async def _poll_upload_status(
         )
 
         if response.status in ("uploaded", "failed"):
-            logger.debug(
-                "轮询完成: {} 状态={} (尝试 {})", filename, response.status, attempt + 1
+            logfire.debug(
+                "轮询完成: {filename} 状态={status} (尝试 {attempt})", filename=filename, status=response.status, attempt=attempt + 1
             )
             return response
 
         wait_time = intervals[min(attempt, len(intervals) - 1)]
-        logger.debug(
-            "轮询中: {} 状态={}，等待 {}s (尝试 {}/{})",
-            filename,
-            response.status,
-            wait_time,
-            attempt + 1,
-            max_attempts,
+        logfire.debug(
+            "轮询中: {filename} 状态={status}，等待 {wait_time}s (尝试 {attempt}/{max_attempts})",
+            filename=filename,
+            status=response.status,
+            wait_time=wait_time,
+            attempt=attempt + 1,
+            max_attempts=max_attempts,
         )
         await asyncio.sleep(wait_time)
 
-    logger.warning("轮询超时: {} ({})", filename, file_id)
+    logfire.warn("轮询超时: {filename} ({file_id})", filename=filename, file_id=file_id)
     return FileUploadResponse(
         id=file_id,
         created_time="",

@@ -1,6 +1,6 @@
 import os
 from dataclasses import dataclass
-from loguru import logger
+import logfire
 
 from .client import notion
 from .models import QueryDataSourceResponse, RichTextPropertyResponse
@@ -31,31 +31,31 @@ async def get_stock_pool() -> list[StockPool]:
         Exception: 获取股票池信息失败时抛出。
     """
     stock_pool_id = os.getenv("STOCK_POOL") or ""
-    logger.info("查询股票池数据源")
+    logfire.info("查询股票池数据源")
     try:
         raw_response = await notion.data_sources.query(stock_pool_id)  # pyright: ignore[reportAny]
         if not raw_response:
-            logger.error("获取股票池失败: 响应为空")
+            logfire.error("获取股票池失败: 响应为空")
             raise Exception("获取股票池信息失败")
 
         response = QueryDataSourceResponse.model_validate(raw_response)
 
         if not response.results:
-            logger.warning("股票池为空")
+            logfire.warn("股票池为空")
             return []
 
         stock_pages: list[StockPool] = []
         for result in response.results:
             prop = result.properties.get("股票代码")
             if not isinstance(prop, RichTextPropertyResponse) or not prop.rich_text:
-                logger.warning("页面 {} 的 '股票代码' 属性异常，已跳过", result.id)
+                logfire.warn("页面 {page_id} 的 '股票代码' 属性异常，已跳过", page_id=result.id)
                 continue
             stock_pages.append(
                 StockPool(id=result.id, code=prop.rich_text[0].plain_text or "")
             )
 
-        logger.success("获取股票池完成，共 {} 只股票", len(stock_pages))
+        logfire.info("获取股票池完成，共 {count} 只股票", count=len(stock_pages))
         return stock_pages
     except Exception:
-        logger.exception("获取股票池失败")
+        logfire.exception("获取股票池失败")
         raise

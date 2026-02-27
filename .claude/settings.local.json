@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__WebSearch__bailian_web_search",
+      "mcp__WebParser__bailian_get_sub_url"
+    ]
+  }
+}

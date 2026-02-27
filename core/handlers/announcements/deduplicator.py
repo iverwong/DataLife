@@ -3,7 +3,7 @@
 基于 xxhash 对公告进行去重，返回数据库中尚不存在的公告列表。
 """
 
-from loguru import logger
+import logfire
 
 from core.data.announcement import Announcement
 from core.db import HashContent, HashContentWithHash, check_hash
@@ -36,7 +36,7 @@ async def deduplicate_announcements(
     # 检查哈希去重
     filtered: list[HashContentWithHash] = await check_hash(hash_contents)
 
-    logger.info("公告去重: {} -> {} 条", len(hash_contents), len(filtered))
+    logfire.info("公告去重: {total} -> {filtered} 条", total=len(hash_contents), filtered=len(filtered))
 
     if not filtered:
         return []

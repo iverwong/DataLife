@@ -5,7 +5,7 @@
 
 import asyncio
 
-from loguru import logger
+import logfire
 
 from core.data import get_announcements
 from core.models.upload import FileUploadResult
@@ -60,8 +60,8 @@ async def create_announcement_pages(
     success_count = sum(create_results)
     failed_count = len(create_results) - success_count
     if failed_count > 0:
-        logger.warning("公告页面创建: 成功 {}，失败 {}", success_count, failed_count)
+        logfire.warn("公告页面创建: 成功 {success}，失败 {failed}", success=success_count, failed=failed_count)
     else:
-        logger.info("公告页面创建: 成功 {} 条", success_count)
+        logfire.info("公告页面创建: 成功 {count} 条", count=success_count)
 
     return unique_hashes

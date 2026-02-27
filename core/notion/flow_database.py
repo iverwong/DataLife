@@ -8,7 +8,7 @@ import os
 from datetime import date, datetime
 from typing import Literal
 
-from loguru import logger
+import logfire
 
 from .client import notion
 from .datetime_helper import convert_datetime_to_notion_date
@@ -44,7 +44,7 @@ TYPE_MAPPING = {
 
 FLOW_DATABASE = os.getenv("FLOW_DATABASE")
 if not FLOW_DATABASE:
-    logger.warning("环境变量 FLOW_DATABASE 未配置，资讯流数据库操作将失败")
+    logfire.warn("环境变量 FLOW_DATABASE 未配置，资讯流数据库操作将失败")
 
 
 DataType = Literal["新闻资讯", "公告披露", "财务数据", "研究报告", "主营构成"]
@@ -104,10 +104,10 @@ async def create_dataflow_page(
             children=content,
         )
 
-        logger.debug("创建 Notion 页面: {}", title)
+        logfire.debug("创建 Notion 页面: {title}", title=title)
         await notion.pages.create(**request.model_dump(exclude_none=True))
-        logger.success("页面创建成功: {}", title)
+        logfire.info("页面创建成功: {title}", title=title)
         return True
     except Exception:
-        logger.exception("页面创建失败: {}", title)
+        logfire.exception("页面创建失败: {title}", title=title)
         return False

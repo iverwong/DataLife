@@ -4,10 +4,9 @@
 将股票公告从巨潮资讯网采集并同步到 Notion 资讯流数据库。
 """
 
-from loguru import logger
+import logfire
 
 from core.db import save_hash, set_update_time
-from core.logs import set_trace_id
 from core.notion.datetime_helper import convert_datetime_to_notion_date
 from core.notion.stock_pool import StockPool
 
@@ -28,44 +27,44 @@ async def process_announcements_for_stock_list(
         stock_list: 待处理的股票列表。
     """
     codes = [s.code for s in stock_list]
-    set_trace_id("ann-" + "-".join(codes))
-    logger.info("开始处理公告数据，共 {} 只股票", len(stock_list))
+    with logfire.span("process_announcements", stock_codes=codes):
+        logfire.info("开始处理公告数据，共 {count} 只股票", count=len(stock_list))
 
-    # 1. 获取公告数据
-    announcements, today = await fetch_announcements_for_stocks(stock_list)
-    if not announcements:
-        logger.info("无公告数据，跳过处理")
-        return
+        # 1. 获取公告数据
+        announcements, today = await fetch_announcements_for_stocks(stock_list)
+        if not announcements:
+            logfire.info("无公告数据，跳过处理")
+            return
 
-    # 2. 哈希去重
-    deduped = await deduplicate_announcements(announcements)
-    if not deduped:
-        logger.info("公告均已存在，跳过处理")
-        return
+        # 2. 哈希去重
+        deduped = await deduplicate_announcements(announcements)
+        if not deduped:
+            logfire.info("公告均已存在，跳过处理")
+            return
 
-    # 3. 分类并上传文件
-    upload_result = await upload_announcement_files(deduped)
+        # 3. 分类并上传文件
+        upload_result = await upload_announcement_files(deduped)
 
-    # 4. 创建 Notion 页面
-    stock_id_map = {s.code: s.id for s in stock_list}
-    success_hashes = await create_announcement_pages(
-        upload_result.succeeded, stock_id_map
-    )
-
-    # 5. 保存成功的哈希值
-    if success_hashes:
-        await save_hash(success_hashes)
-
-    # 6. 更新每只股票的最后更新时间
-    processed_stocks = {item.announcement.stock for item in deduped}
-    for stock_code in processed_stocks:
-        await set_update_time(
-            stock_code,
-            "announcements",
-            update_time=convert_datetime_to_notion_date(today),
+        # 4. 创建 Notion 页面
+        stock_id_map = {s.code: s.id for s in stock_list}
+        success_hashes = await create_announcement_pages(
+            upload_result.succeeded, stock_id_map
         )
 
-    logger.success("公告数据处理完成")
+        # 5. 保存成功的哈希值
+        if success_hashes:
+            await save_hash(success_hashes)
+
+        # 6. 更新每只股票的最后更新时间
+        processed_stocks = {item.announcement.stock for item in deduped}
+        for stock_code in processed_stocks:
+            await set_update_time(
+                stock_code,
+                "announcements",
+                update_time=convert_datetime_to_notion_date(today),
+            )
+
+        logfire.info("公告数据处理完成")
 
 
 __all__ = ["process_announcements_for_stock_list"]

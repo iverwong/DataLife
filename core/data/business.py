@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import date
 
 import akshare as ak  # pyright: ignore[reportMissingTypeStubs]
-from loguru import logger
+import logfire
 from pandas import DataFrame
 
 _BUSINESS_COLUMNS = [
@@ -58,7 +58,7 @@ async def get_business(stock_code: str) -> BusinessData:
         if stock_code[0] == "0" or stock_code[0] == "3"
         else f"SH{stock_code}"
     )
-    logger.debug("获取主营构成: {}", stock_code)
+    logfire.debug("获取主营构成: {stock_code}", stock_code=stock_code)
     raw: object = await asyncio.to_thread(ak.stock_zygc_em, code)
     df = DataFrame(raw)
     report_date: date = df["报告日期"].max()  # pyright: ignore[reportAny]
@@ -90,5 +90,5 @@ async def get_business(stock_code: str) -> BusinessData:
         .reset_index(drop=True)
     )
 
-    logger.debug("主营构成获取完成: {} ({})", stock_code, report_date)
+    logfire.debug("主营构成获取完成: {stock_code} ({report_date})", stock_code=stock_code, report_date=report_date)
     return BusinessData(report_date, industry_df, product_df, region_df)
