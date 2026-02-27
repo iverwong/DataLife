@@ -118,7 +118,7 @@ core/db（去重/记录） ←───→ core/notion（写入 Notion）
 
 ### 代码规范
 
-- **类型注解**：所有公共函数必须有 type hints
+- **类型注解**：所有函数（含私有函数）必须有完整的 type hints（参数 + 返回值）。非必要禁止使用 `Any` 类型，如确需使用须在行内注释说明原因（如 `# Any: 第三方库返回类型不确定`）
 - **文档字符串**：使用 Google 风格 docstring
 - **编码规范**：PEP 8，行宽 120 字符
 - **异步编程**：所有 I/O 操作使用 async/await
@@ -158,14 +158,14 @@ pytest tests/ --cov=core --cov-report=html
 
 ### 测试标记说明
 
-| 标记 | 说明 |
-|------|------|
-| `@pytest.mark.unit` | 单元测试（使用 mock） |
-| `@pytest.mark.integration` | 集成测试（跨模块协作） |
-| `@pytest.mark.asyncio` | 异步测试 |
-| `@pytest.mark.fast` | 执行时间 < 1 秒 |
-| `@pytest.mark.slow` | 执行时间 > 1 秒 |
-| `@pytest.mark.real_network` | 需要真实网络请求 |
+| 标记                        | 说明                   |
+| --------------------------- | ---------------------- |
+| `@pytest.mark.unit`         | 单元测试（使用 mock）  |
+| `@pytest.mark.integration`  | 集成测试（跨模块协作） |
+| `@pytest.mark.asyncio`      | 异步测试               |
+| `@pytest.mark.fast`         | 执行时间 < 1 秒        |
+| `@pytest.mark.slow`         | 执行时间 > 1 秒        |
+| `@pytest.mark.real_network` | 需要真实网络请求       |
 
 ### 测试资源管理
 

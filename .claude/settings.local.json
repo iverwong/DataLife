@@ -1,15 +1,17 @@
 {
-  "model": "qwen3-coder-next",
   "permissions": {
     "allow": [
       "mcp__WebSearch__bailian_web_search",
       "mcp__WebParser__bailian_get_sub_url",
       "mcp__WebParser__bailian_web_parser",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(./venv/Scripts/python.exe:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [
       "WebFetch",
       "WebSearch"
     ]
-  }
+  },
+  "model": "qwen3-coder-next"
 }
