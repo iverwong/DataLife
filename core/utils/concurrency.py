@@ -36,7 +36,9 @@ def get_cninfo_semaphore() -> asyncio.Semaphore:
     global _cninfo_semaphore
     if _cninfo_semaphore is None:
         _cninfo_semaphore = asyncio.Semaphore(CNINFO_CONCURRENCY)
-        logfire.debug("巨潮 API 并发限制器初始化: 最大 {count} 并发", count=CNINFO_CONCURRENCY)
+        logfire.debug(
+            "巨潮 API 并发限制器初始化: 最大 {count} 并发", count=CNINFO_CONCURRENCY
+        )
     return _cninfo_semaphore
 
 
@@ -51,7 +53,10 @@ def get_pdf_download_semaphore() -> asyncio.Semaphore:
     global _pdf_download_semaphore
     if _pdf_download_semaphore is None:
         _pdf_download_semaphore = asyncio.Semaphore(PDF_DOWNLOAD_CONCURRENCY)
-        logfire.debug("PDF 下载并发限制器初始化: 最大 {count} 并发", count=PDF_DOWNLOAD_CONCURRENCY)
+        logfire.debug(
+            "PDF 下载并发限制器初始化: 最大 {count} 并发",
+            count=PDF_DOWNLOAD_CONCURRENCY,
+        )
     return _pdf_download_semaphore
 
 

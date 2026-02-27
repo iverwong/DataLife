@@ -48,7 +48,9 @@ async def get_stock_pool() -> list[StockPool]:
         for result in response.results:
             prop = result.properties.get("股票代码")
             if not isinstance(prop, RichTextPropertyResponse) or not prop.rich_text:
-                logfire.warn("页面 {page_id} 的 '股票代码' 属性异常，已跳过", page_id=result.id)
+                logfire.warn(
+                    "页面 {page_id} 的 '股票代码' 属性异常，已跳过", page_id=result.id
+                )
                 continue
             stock_pages.append(
                 StockPool(id=result.id, code=prop.rich_text[0].plain_text or "")

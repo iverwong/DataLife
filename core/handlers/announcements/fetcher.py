@@ -65,13 +65,17 @@ async def fetch_announcements_for_stocks(
         return [], today
 
     # 使用并发控制执行所有任务
-    results = await gather_with_concurrency_and_exceptions(get_cninfo_semaphore(), tasks)
+    results = await gather_with_concurrency_and_exceptions(
+        get_cninfo_semaphore(), tasks
+    )
 
     # 展平结果，跳过异常
     announcements: list[Announcement] = []
     for result in results:
         if isinstance(result, BaseException):
-            logfire.error("获取公告异常: {error_type}", error_type=type(result).__name__)
+            logfire.error(
+                "获取公告异常: {error_type}", error_type=type(result).__name__
+            )
             continue
         announcements.extend(result)
 

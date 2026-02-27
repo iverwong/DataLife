@@ -36,7 +36,11 @@ async def deduplicate_announcements(
     # 检查哈希去重
     filtered: list[HashContentWithHash] = await check_hash(hash_contents)
 
-    logfire.info("公告去重: {total} -> {filtered} 条", total=len(hash_contents), filtered=len(filtered))
+    logfire.info(
+        "公告去重: {total} -> {filtered} 条",
+        total=len(hash_contents),
+        filtered=len(filtered),
+    )
 
     if not filtered:
         return []
@@ -48,9 +52,11 @@ async def deduplicate_announcements(
     result: list[AnnouncementWithHash] = []
     for ann, hc in zip(announcements, hash_contents):
         if hc.content in hash_map:
-            result.append(AnnouncementWithHash(
-                announcement=ann,
-                hash_value=hash_map[hc.content],
-            ))
+            result.append(
+                AnnouncementWithHash(
+                    announcement=ann,
+                    hash_value=hash_map[hc.content],
+                )
+            )
 
     return result

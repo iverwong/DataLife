@@ -163,7 +163,9 @@ async def save_hash(data_list: list[str]) -> None:
         )
 
 
-async def get_update_time(stocks: list[str], key: UpdateRecordKey) -> dict[str, NotionDate | None]:
+async def get_update_time(
+    stocks: list[str], key: UpdateRecordKey
+) -> dict[str, NotionDate | None]:
     """获取股票列表的更新时间记录，对缺失记录自动插入 NULL 行。
 
     Args:

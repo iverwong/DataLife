@@ -8,7 +8,14 @@ from datetime import datetime
 import logfire
 
 from core.data import get_business
-from core.db import HashContent, HashContentWithHash, check_hash, get_update_time, save_hash, set_update_time
+from core.db import (
+    HashContent,
+    HashContentWithHash,
+    check_hash,
+    get_update_time,
+    save_hash,
+    set_update_time,
+)
 from core.models import NotionDate
 from core.notion import (
     NotionContentBuilder,
@@ -71,7 +78,9 @@ async def process_business_data_for_stock_list(stock_list: list[StockPool]) -> N
             )
 
             logfire.info(
-                "创建主营构成页面: {stock_code} ({report_date})", stock_code=stock_code, report_date=business_data.report_date
+                "创建主营构成页面: {stock_code} ({report_date})",
+                stock_code=stock_code,
+                report_date=business_data.report_date,
             )
 
             page_result = await create_dataflow_page(
@@ -84,15 +93,21 @@ async def process_business_data_for_stock_list(stock_list: list[StockPool]) -> N
             )
 
             if page_result:
-                logfire.info("主营构成页面创建成功: {stock_code}", stock_code=stock_code)
+                logfire.info(
+                    "主营构成页面创建成功: {stock_code}", stock_code=stock_code
+                )
                 await save_hash([each.hash_value for each in filtered])
                 await set_update_time(
                     stock_code,
                     "business",
-                    update_time=convert_datetime_to_notion_date(business_data.report_date),
+                    update_time=convert_datetime_to_notion_date(
+                        business_data.report_date
+                    ),
                 )
             else:
-                logfire.error("主营构成页面创建失败: {stock_code}", stock_code=stock_code)
+                logfire.error(
+                    "主营构成页面创建失败: {stock_code}", stock_code=stock_code
+                )
 
 
 def _should_update_half_year(last_update_str: NotionDate | None) -> bool:

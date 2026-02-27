@@ -60,7 +60,9 @@ async def upload_files_with_local(
         else:
             if failed:
                 logfire.error(
-                    "本地上传最终失败 {count} 个: {titles}", count=len(failed), titles=[f.title for f in failed]
+                    "本地上传最终失败 {count} 个: {titles}",
+                    count=len(failed),
+                    titles=[f.title for f in failed],
                 )
             all_results.extend(failed)
             pending_files = []
@@ -107,10 +109,14 @@ async def _upload_internal_and_wait(
         send_result = FileUploadResponse.model_validate(send_raw)
         if send_result.status == "uploaded":
             file_succeeded = True
-            logfire.info("上传成功: {title} ({file_id})", title=file_info.title, file_id=file_id)
+            logfire.info(
+                "上传成功: {title} ({file_id})", title=file_info.title, file_id=file_id
+            )
         else:
             file_error = _extract_upload_error(send_result) or "未知错误"
-            logfire.error("上传失败: {title} - {error}", title=file_info.title, error=file_error)
+            logfire.error(
+                "上传失败: {title} - {error}", title=file_info.title, error=file_error
+            )
     except Exception as e:
         logfire.error("上传异常: {title} - {error}", title=file_info.title, error=e)
         file_error = str(e)
@@ -169,7 +175,9 @@ async def upload_files_with_url(
         else:
             if failed:
                 logfire.error(
-                    "外链上传最终失败 {count} 个: {titles}", count=len(failed), titles=[f.title for f in failed]
+                    "外链上传最终失败 {count} 个: {titles}",
+                    count=len(failed),
+                    titles=[f.title for f in failed],
                 )
             all_results.extend(failed)
             pending_files = []
@@ -208,7 +216,11 @@ async def _upload_external_and_wait(file_info: FileUploadRequest) -> FileUploadR
         poll_result = await _poll_upload_status(file_id, file_info.title)
 
         if poll_result.status == "uploaded":
-            logfire.info("外链上传成功: {title} ({file_id})", title=file_info.title, file_id=file_id)
+            logfire.info(
+                "外链上传成功: {title} ({file_id})",
+                title=file_info.title,
+                file_id=file_id,
+            )
             return FileUploadResult(
                 stock=file_info.stock,
                 url=file_info.url,
@@ -221,7 +233,9 @@ async def _upload_external_and_wait(file_info: FileUploadRequest) -> FileUploadR
             )
 
         error_msg = _extract_upload_error(poll_result) or "轮询超时"
-        logfire.error("外链上传失败: {title} - {error}", title=file_info.title, error=error_msg)
+        logfire.error(
+            "外链上传失败: {title} - {error}", title=file_info.title, error=error_msg
+        )
         return FileUploadResult(
             stock=file_info.stock,
             url=file_info.url,
@@ -262,7 +276,8 @@ def _extract_upload_error(response: FileUploadResponse) -> str | None:
     if isinstance(file_import_result, FileImportError):
         return file_import_result.error.message
     logfire.error(
-        "收到了状态不为 `uploaded` 但文件导入结果不为 `error` 的报文：{response}", response=response
+        "收到了状态不为 `uploaded` 但文件导入结果不为 `error` 的报文：{response}",
+        response=response,
     )
     return None
 
@@ -290,7 +305,10 @@ async def _poll_upload_status(
 
         if response.status in ("uploaded", "failed"):
             logfire.debug(
-                "轮询完成: {filename} 状态={status} (尝试 {attempt})", filename=filename, status=response.status, attempt=attempt + 1
+                "轮询完成: {filename} 状态={status} (尝试 {attempt})",
+                filename=filename,
+                status=response.status,
+                attempt=attempt + 1,
             )
             return response
 

@@ -90,5 +90,9 @@ async def get_business(stock_code: str) -> BusinessData:
         .reset_index(drop=True)
     )
 
-    logfire.debug("主营构成获取完成: {stock_code} ({report_date})", stock_code=stock_code, report_date=report_date)
+    logfire.debug(
+        "主营构成获取完成: {stock_code} ({report_date})",
+        stock_code=stock_code,
+        report_date=report_date,
+    )
     return BusinessData(report_date, industry_df, product_df, region_df)

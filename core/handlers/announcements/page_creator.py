@@ -60,7 +60,11 @@ async def create_announcement_pages(
     success_count = sum(create_results)
     failed_count = len(create_results) - success_count
     if failed_count > 0:
-        logfire.warn("公告页面创建: 成功 {success}，失败 {failed}", success=success_count, failed=failed_count)
+        logfire.warn(
+            "公告页面创建: 成功 {success}，失败 {failed}",
+            success=success_count,
+            failed=failed_count,
+        )
     else:
         logfire.info("公告页面创建: 成功 {count} 条", count=success_count)
 

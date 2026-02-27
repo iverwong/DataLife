@@ -69,7 +69,9 @@ async def upload_announcement_files(
             small_files.append(item)
 
     logfire.info(
-        "公告分类: 外链 {small} 个，分割上传 {large} 个", small=len(small_files), large=len(large_files)
+        "公告分类: 外链 {small} 个，分割上传 {large} 个",
+        small=len(small_files),
+        large=len(large_files),
     )
 
     # 构建外链上传请求并启动任务
