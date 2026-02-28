@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from typing import override
+
 
 class DataLifeError(Exception):
     """DataLife 项目统一异常基类。
@@ -19,6 +21,7 @@ class DataLifeError(Exception):
         super().__init__(message)
         self.cause = cause
 
+    @override
     def __str__(self) -> str:
         base = super().__str__()
         if self.cause:

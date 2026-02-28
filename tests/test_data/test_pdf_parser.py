@@ -92,10 +92,10 @@ def encrypted_pdf_path(tmp_path: Path) -> Path:
     doc = pymupdf.open()
     page = doc.new_page()
     page.insert_text((72, 72), "加密内容")
-    # encryption=1 表示使用 AES-256 加密
+    # 使用 AES-256 加密
     doc.save(
         str(pdf_path),
-        encryption=1,
+        encryption=pymupdf.PDF_ENCRYPT_AES_256,  # type: ignore[attr-defined]
         user_pw="secret",
     )
     doc.close()

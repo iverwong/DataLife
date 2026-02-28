@@ -88,7 +88,59 @@ async def parse_pdf(
         PDFCorruptedError: PDF 文件损坏或格式无效。
         PDFParsingError: 其它解析错误。
     """
-    ...
+    # 统一转为 Path 对象
+    path = Path(pdf_path)
+
+    # 检查文件是否存在
+    if not path.exists():
+        raise PDFFileNotFoundError(f"PDF 文件不存在: {pdf_path}")
+
+    source = str(path)
+    doc: pymupdf.Document | None = None
+
+    try:
+        # 必须传 str 给 pymupdf.open，不能传 Path
+        doc = pymupdf.open(str(path))
+
+        # 检查加密状态
+        if doc.is_encrypted:
+            # 尝试空密码认证
+            if not doc.authenticate(""):
+                raise PDFEncryptedError(f"PDF 文件已加密，无法打开: {pdf_path}")
+
+        # 使用线程池调用同步解析函数
+        result = await asyncio.to_thread(
+            _parse_document,
+            doc,
+            source=source,
+            pages=pages,
+            include_header_footer=include_header_footer,
+        )
+
+        return result
+
+    except PDFEncryptedError:
+        # 已在上游处理并关闭 doc，这里重新抛出
+        raise
+    except (RuntimeError, ValueError, OSError) as e:
+        # pymupdf 原生异常，检查是否是加密相关
+        error_msg = str(e).lower()
+        if "encrypt" in error_msg:
+            raise PDFEncryptedError(f"PDF 文件已加密，无法解析: {pdf_path}", cause=e) from e
+        raise PDFCorruptedError(f"PDF 文件损坏或格式无效: {pdf_path}", cause=e) from e
+    except PDFParsingError:
+        # 已经是正确的异常类型，直接重新抛出
+        raise
+    except Exception as e:
+        # 其它未知异常，检查是否是加密相关
+        error_msg = str(e).lower()
+        if "encrypt" in error_msg:
+            raise PDFEncryptedError(f"PDF 文件已加密，无法解析: {pdf_path}", cause=e) from e
+        raise PDFParsingError(f"PDF 解析失败: {pdf_path}", cause=e) from e
+    finally:
+        # 确保文档被关闭
+        if doc is not None:
+            doc.close()
 
 
 async def parse_pdf_bytes(
@@ -119,7 +171,55 @@ async def parse_pdf_bytes(
         PDFEncryptedError: PDF 已加密。
         PDFParsingError: 其它解析错误。
     """
-    ...
+    # 检查字节内容是否为空
+    if not pdf_bytes:
+        raise PDFCorruptedError("PDF 内容为空")
+
+    doc: pymupdf.Document | None = None
+
+    try:
+        # 从字节流创建 Document
+        doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+
+        # 检查加密状态
+        if doc.is_encrypted:
+            # 尝试空密码认证
+            if not doc.authenticate(""):
+                raise PDFEncryptedError(f"PDF 已加密: {source}")
+
+        # 使用线程池调用同步解析函数
+        result = await asyncio.to_thread(
+            _parse_document,
+            doc,
+            source=source,
+            pages=pages,
+            include_header_footer=include_header_footer,
+        )
+
+        return result
+
+    except PDFEncryptedError:
+        # 已在上游处理并关闭 doc，这里重新抛出
+        raise
+    except (RuntimeError, ValueError, OSError) as e:
+        # pymupdf 原生异常，检查是否是加密相关
+        error_msg = str(e).lower()
+        if "encrypt" in error_msg:
+            raise PDFEncryptedError(f"PDF 已加密，无法解析: {source}", cause=e) from e
+        raise PDFCorruptedError(f"PDF 内容无效或格式损坏: {source}", cause=e) from e
+    except PDFParsingError:
+        # 已经是正确的异常类型，直接重新抛出
+        raise
+    except Exception as e:
+        # 其它未知异常，检查是否是加密相关
+        error_msg = str(e).lower()
+        if "encrypt" in error_msg:
+            raise PDFEncryptedError(f"PDF 已加密，无法解析: {source}", cause=e) from e
+        raise PDFParsingError(f"PDF 解析失败: {source}", cause=e) from e
+    finally:
+        # 确保文档被关闭
+        if doc is not None:
+            doc.close()
 
 
 def _parse_document(
@@ -144,7 +244,60 @@ def _parse_document(
     Returns:
         PDFParseResult。
     """
-    ...
+    logfire.info("Starting PDF parsing", source=source, page_count=doc.page_count)
+
+    # 调用 pymupdf4llm 进行解析
+    # pymupdf4llm.to_markdown 返回 str | list[dict]，page_chunks=True 时返回 list[dict]
+    chunks_raw: list[dict] = pymupdf4llm.to_markdown(  # type: ignore[assignment]
+        doc,
+        pages=pages,
+        page_chunks=True,
+        header=include_header_footer,
+        footer=include_header_footer,
+        force_text=True,
+        show_progress=False,
+    )
+
+    chunks: list[PageChunk] = []
+    for chunk_dict in chunks_raw:
+        # pymupdf4llm 返回的 page_number 是 0-based，转换为 1-based
+        # pymupdf4llm 返回的 page_number 已经是 1-based
+        page_number = chunk_dict.get("metadata", {}).get("page_number", 1)
+
+        # 提取 markdown 文本并清理
+        raw_text = chunk_dict.get("text", "")
+        cleaned_text = _clean_markdown(raw_text)
+
+        # 构建 PageChunk
+        chunk = PageChunk(
+            page_number=page_number,
+            markdown_text=cleaned_text,
+            metadata=chunk_dict.get("metadata", {}),
+            toc_items=chunk_dict.get("toc_items", []),
+            page_boxes=chunk_dict.get("page_boxes", []),
+        )
+        chunks.append(chunk)
+
+        logfire.debug(
+            "Page parsed",
+            source=source,
+            page=page_number,
+            text_length=len(cleaned_text),
+        )
+
+    result = PDFParseResult(
+        source=source,
+        page_count=doc.page_count,
+        chunks=chunks,
+    )
+
+    logfire.info(
+        "PDF parsing completed",
+        source=source,
+        total_pages=len(chunks),
+    )
+
+    return result
 
 
 def _clean_markdown(text: str) -> str:
@@ -163,4 +316,12 @@ def _clean_markdown(text: str) -> str:
     Returns:
         清理后的 Markdown 文本。
     """
-    ...
+    import re
+
+    # 合并连续 3+ 空行为 2 个
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    # 移除独立成行的纯数字页码残留（如 "1", "2", "12" 等）
+    text = re.sub(r"^\s*\d+\s*$", "", text, flags=re.MULTILINE)
+
+    return text.strip()
