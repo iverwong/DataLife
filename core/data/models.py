@@ -106,3 +106,51 @@ class AnnouncementsResponse(BaseModel):
     categoryList: list[object] | None = None
     hasMore: bool = False
     totalpages: int = 0
+
+
+# ============================================================
+# PDF 解析结果数据模型
+# ============================================================
+
+from dataclasses import dataclass, field
+from typing import Any
+
+
+@dataclass(frozen=True)
+class PageChunk:
+    """单页解析结果。
+
+    Attributes:
+        page_number: 1-based 页码（方便自然理解）。
+            注意：pymupdf4llm 返回 0-based，由 _parse_document() 转换为 1-based。
+        markdown_text: 该页的 Markdown 文本（Layout 模式下已包含表格格式化）。
+        metadata: 文档元数据，包含 file_path、page_count、page_number 等。
+        toc_items: 指向该页的目录项列表，格式 [lvl, title, pagenumber(1-based)]。
+        page_boxes: Layout 布局边界框列表，每项含 index / class / bbox / pos。
+            class 可为 "text" / "title" / "table" / "picture" / "header" / "footer" 等。
+            pos 为 tuple(start, stop)，用于从 markdown_text 中切片提取该区域文本。
+    """
+    page_number: int
+    markdown_text: str
+    metadata: dict[str, Any] = field(default_factory=dict)
+    toc_items: list[list[Any]] = field(default_factory=list)
+    page_boxes: list[dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class PDFParseResult:
+    """PDF 解析的完整结果。
+
+    Attributes:
+        source: 来源标识（文件路径字符串或自定义名称），用于日志和下游追溯。
+        page_count: PDF 总页数。
+        chunks: 按页分块的解析结果列表，顺序与原始页码一致。
+    """
+    source: str
+    page_count: int
+    chunks: list[PageChunk] = field(default_factory=list)
+
+    @property
+    def full_text(self) -> str:
+        """拼接所有页面的 Markdown 文本，页间以双换行分隔。"""
+        return "\n\n".join(chunk.markdown_text for chunk in self.chunks)
