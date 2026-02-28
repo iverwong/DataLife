@@ -4,6 +4,7 @@
   "pythonPlatform": "Windows",
   "venvPath": ".",
   "venv": "venv",
-  "include": ["core", "tests", "scripts"],
-  "exclude": ["venv"]
+  "include": [
+    "core"
+  ],
 }
