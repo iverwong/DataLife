@@ -16,7 +16,6 @@ from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 # ============================================================
 # 巨潮资讯网 — 股票代码映射
 # GET http://www.cninfo.com.cn/new/data/szse_stock.json
@@ -130,11 +129,12 @@ class PageChunk:
             class 可为 "text" / "title" / "table" / "picture" / "header" / "footer" 等。
             pos 为 tuple(start, stop)，用于从 markdown_text 中切片提取该区域文本。
     """
+
     page_number: int
     markdown_text: str
-    metadata: dict[str, Any] = field(default_factory=dict)
-    toc_items: list[list[Any]] = field(default_factory=list)
-    page_boxes: list[dict[str, Any]] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)  # pyright: ignore[reportExplicitAny]
+    toc_items: list[list[Any]] = field(default_factory=list)  # pyright: ignore[reportExplicitAny]
+    page_boxes: list[dict[str, Any]] = field(default_factory=list)  # pyright: ignore[reportExplicitAny]
 
 
 @dataclass(frozen=True)
@@ -146,6 +146,7 @@ class PDFParseResult:
         page_count: PDF 总页数。
         chunks: 按页分块的解析结果列表，顺序与原始页码一致。
     """
+
     source: str
     page_count: int
     chunks: list[PageChunk] = field(default_factory=list)

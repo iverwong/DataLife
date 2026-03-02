@@ -20,17 +20,17 @@ Layout 模式说明：
 
 from __future__ import annotations
 
-import pymupdf.layout  # noqa: F401 — 激活 Layout 模式，必须在 pymupdf4llm 之前
-import pymupdf  # noqa: E402
-import pymupdf4llm  # noqa: E402
-
 import asyncio
 from pathlib import Path
+from typing import Any, cast
 
 import logfire
+import pymupdf
+import pymupdf.layout  # 激活 Layout 模式，必须在 pymupdf4llm 之前  # pyright: ignore[reportUnusedImport]
+import pymupdf4llm  # pyright: ignore[reportMissingTypeStubs]
 
-from core.exceptions import DataLifeError
 from core.data.models import PageChunk, PDFParseResult
+from core.exceptions import DataLifeError
 
 # ── 异常 ─────────────────────────────────────────────
 
@@ -56,6 +56,7 @@ DEFAULT_OCR_LANGUAGE: str = "chi_sim+eng"
 """默认 OCR 语言：简体中文 + 英文（财报场景）。"""
 
 # ── 数据结构定义在 core/data/models.py（见 4.4 节） ────
+
 
 # ── 核心函数 ──────────────────────────────────────────
 async def parse_pdf(
@@ -105,7 +106,7 @@ async def parse_pdf(
         # 检查加密状态
         if doc.is_encrypted:
             # 尝试空密码认证
-            if not doc.authenticate(""):
+            if not doc.authenticate(""):  # pyright: ignore[reportUnknownMemberType]
                 raise PDFEncryptedError(f"PDF 文件已加密，无法打开: {pdf_path}")
 
         # 使用线程池调用同步解析函数
@@ -126,7 +127,9 @@ async def parse_pdf(
         # pymupdf 原生异常，检查是否是加密相关
         error_msg = str(e).lower()
         if "encrypt" in error_msg:
-            raise PDFEncryptedError(f"PDF 文件已加密，无法解析: {pdf_path}", cause=e) from e
+            raise PDFEncryptedError(
+                f"PDF 文件已加密，无法解析: {pdf_path}", cause=e
+            ) from e
         raise PDFCorruptedError(f"PDF 文件损坏或格式无效: {pdf_path}", cause=e) from e
     except PDFParsingError:
         # 已经是正确的异常类型，直接重新抛出
@@ -135,7 +138,9 @@ async def parse_pdf(
         # 其它未知异常，检查是否是加密相关
         error_msg = str(e).lower()
         if "encrypt" in error_msg:
-            raise PDFEncryptedError(f"PDF 文件已加密，无法解析: {pdf_path}", cause=e) from e
+            raise PDFEncryptedError(
+                f"PDF 文件已加密，无法解析: {pdf_path}", cause=e
+            ) from e
         raise PDFParsingError(f"PDF 解析失败: {pdf_path}", cause=e) from e
     finally:
         # 确保文档被关闭
@@ -184,7 +189,7 @@ async def parse_pdf_bytes(
         # 检查加密状态
         if doc.is_encrypted:
             # 尝试空密码认证
-            if not doc.authenticate(""):
+            if not doc.authenticate(""):  # pyright: ignore[reportUnknownMemberType]
                 raise PDFEncryptedError(f"PDF 已加密: {source}")
 
         # 使用线程池调用同步解析函数
@@ -244,11 +249,13 @@ def _parse_document(
     Returns:
         PDFParseResult。
     """
-    logfire.info("Starting PDF parsing", source=source, page_count=doc.page_count)
+    logfire.info(
+        "Starting PDF parsing", source=source, page_count=cast(int, doc.page_count)
+    )
 
     # 调用 pymupdf4llm 进行解析
     # pymupdf4llm.to_markdown 返回 str | list[dict]，page_chunks=True 时返回 list[dict]
-    chunks_raw: list[dict] = pymupdf4llm.to_markdown(  # type: ignore[assignment]
+    chunks_raw: list[dict[str, Any]] = pymupdf4llm.to_markdown(  # pyright: ignore[reportExplicitAny, reportUnknownMemberType, reportAssignmentType, reportUnknownVariableType]
         doc,
         pages=pages,
         page_chunks=True,
@@ -262,19 +269,19 @@ def _parse_document(
     for chunk_dict in chunks_raw:
         # pymupdf4llm 返回的 page_number 是 0-based，转换为 1-based
         # pymupdf4llm 返回的 page_number 已经是 1-based
-        page_number = chunk_dict.get("metadata", {}).get("page_number", 1)
+        page_number: int = chunk_dict.get("metadata", {}).get("page_number", 1)  # pyright: ignore[reportAny]
 
         # 提取 markdown 文本并清理
-        raw_text = chunk_dict.get("text", "")
+        raw_text: str = chunk_dict.get("text", "")  # pyright: ignore[reportAny]
         cleaned_text = _clean_markdown(raw_text)
 
         # 构建 PageChunk
         chunk = PageChunk(
             page_number=page_number,
             markdown_text=cleaned_text,
-            metadata=chunk_dict.get("metadata", {}),
-            toc_items=chunk_dict.get("toc_items", []),
-            page_boxes=chunk_dict.get("page_boxes", []),
+            metadata=chunk_dict.get("metadata", {}),  # pyright: ignore[reportAny]
+            toc_items=chunk_dict.get("toc_items", []),  # pyright: ignore[reportAny]
+            page_boxes=chunk_dict.get("page_boxes", []),  # pyright: ignore[reportAny]
         )
         chunks.append(chunk)
 
@@ -287,7 +294,7 @@ def _parse_document(
 
     result = PDFParseResult(
         source=source,
-        page_count=doc.page_count,
+        page_count=cast(int, doc.page_count),
         chunks=chunks,
     )
 
