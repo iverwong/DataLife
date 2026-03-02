@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 from abc import ABC, abstractmethod
+from typing import override
 
 import pymupdf
 
@@ -60,6 +61,7 @@ class BookmarkStrategy(ChapterDetectionStrategy):
     验证失败的书签会被过滤，若有效书签不足 2 个则返回 None 触发降级。
     """
 
+    @override
     def detect(
         self,
         doc: pymupdf.Document,
@@ -84,6 +86,7 @@ class TocPageStrategy(ChapterDetectionStrategy):
     # 搜索目录的最大页数范围
     MAX_SEARCH_PAGES: int = 10
 
+    @override
     def detect(
         self,
         doc: pymupdf.Document,
@@ -111,16 +114,19 @@ class HeadingStrategy(ChapterDetectionStrategy):
 
     # 中文财报常见编号模式
     CN_SECTION_PATTERN: re.Pattern[str] = re.compile(
-        r"^\*{0,2}(?:"
-        r"第[一二三四五六七八九十\d]+(?:节|章|部分)"
-        r"|[一二三四五六七八九十]+[、.]"
-        r"|[（(][一二三四五六七八九十\d]+[)）]"
-        r"|\d+[、.](?!\d)"
-        r"|\d+\.\d+"
-        r")\s*.+$",
+        (
+            r"^\*{0,2}(?:"
+            r"第[一二三四五六七八九十\d]+(?:节|章|部分)"
+            r"|[一二三四五六七八九十]+[、.]"
+            r"|[（(][一二三四五六七八九十\d]+[)）]"
+            r"|\d+[、.](?!\d)"
+            r"|\d+\.\d+"
+            r")\s*.+$"
+        ),
         re.MULTILINE,
     )
 
+    @override
     def detect(
         self,
         doc: pymupdf.Document,
@@ -141,6 +147,7 @@ class FallbackStrategy(ChapterDetectionStrategy):
     - 此策略始终成功，不返回 None
     """
 
+    @override
     def detect(
         self,
         doc: pymupdf.Document,
