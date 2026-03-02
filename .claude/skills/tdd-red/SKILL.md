@@ -3,7 +3,7 @@ name: tdd-red
 description: '当用户提供执行计划并要求执行 Red 阶段时使用。严格按照计划中「阶段 A：/tdd-red」标注的步骤逐步执行，完成 Git 准备、契约定义、测试编写、静态检查、验证全红和 Git 提交。'
 disable-model-invocation: true
 argument-hint: '[执行计划文件路径]'
-allowed-tools: Read, Write, Grep, Glob, Bash(pytest *), Bash(basedpyright *), Bash(ruff *), Bash(git *)
+allowed-tools: Read, Write, Grep, Glob, Bash(pytest *), Bash(basedpyright *), Bash(./venv/Scripts/ruff check:*), Bash(git *), Bash(./venv/Scripts/python *)
 metadata:
   author: iver
   version: '2.0'

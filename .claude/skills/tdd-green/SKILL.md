@@ -3,7 +3,7 @@ name: tdd-green
 description: '当契约和测试已就绪（全红状态）且需要执行 Green 阶段时使用。严格按照计划中「阶段 B：/tdd-green」标注的步骤逐步执行，完成核心实现参考学习、逐模块实现、全量验证、测试补充和 Git 提交。'
 disable-model-invocation: true
 argument-hint: '[执行计划文件路径]'
-allowed-tools: Read, Write, Grep, Glob, Bash(pytest *), Bash(basedpyright *), Bash(ruff *), Bash(git *)
+allowed-tools: Read, Write, Grep, Glob, Bash(pytest *), Bash(basedpyright *), Bash(./venv/Scripts/ruff check:*), Bash(git *), Bash(./venv/Scripts/python *)
 metadata:
   author: iver
   version: '2.0'

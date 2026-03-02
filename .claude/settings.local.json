@@ -6,12 +6,15 @@
       "mcp__WebParser__bailian_web_parser",
       "mcp__ide__getDiagnostics",
       "Bash(./venv/Scripts/python.exe:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(./venv/Scripts/python:*)",
+      "Bash(./venv/Scripts/pytest:*)",
+      "Bash(./venv/Scripts/ruff check:*)",
+      "Bash(ruff check:*)"
     ],
     "deny": [
       "WebFetch",
       "WebSearch"
     ]
-  },
-  "model": "qwen3-coder-next"
+  }
 }
