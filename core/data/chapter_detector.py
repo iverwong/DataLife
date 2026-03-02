@@ -78,7 +78,7 @@ class TocPageStrategy(ChapterDetectionStrategy):
     """
 
     # 目录页检测正则（支持任意空格："目录"、"目 录"、"目  录" 等）
-    TOC_PATTERN: re.Pattern = re.compile(
+    TOC_PATTERN: re.Pattern[str] = re.compile(
         r"目\s*录|CONTENTS|Table\s+of\s+Contents", re.IGNORECASE
     )
     # 搜索目录的最大页数范围
@@ -110,7 +110,7 @@ class HeadingStrategy(ChapterDetectionStrategy):
     """
 
     # 中文财报常见编号模式
-    CN_SECTION_PATTERN: re.Pattern = re.compile(
+    CN_SECTION_PATTERN: re.Pattern[str] = re.compile(
         r"^\*{0,2}(?:"
         r"第[一二三四五六七八九十\d]+(?:节|章|部分)"
         r"|[一二三四五六七八九十]+[、.]"
