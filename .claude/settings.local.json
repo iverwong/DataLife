@@ -1,9 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "mcp__WebSearch__bailian_web_search",
-      "mcp__WebParser__bailian_get_sub_url",
-      "mcp__WebParser__bailian_web_parser",
+      "mcp__MiniMax__web_search",
+      "mcp__MiniMax__understand_image",
       "mcp__ide__getDiagnostics",
       "Bash(./venv/Scripts/python.exe:*)",
       "Bash(git commit:*)",
