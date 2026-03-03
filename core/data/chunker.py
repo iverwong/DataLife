@@ -15,15 +15,14 @@ import re
 from typing import final
 
 from core.data.models import (
-    ParsedDocument,
     ChapterBoundary,
     Chunk,
     ChunkList,
-    ChunkType,
     ChunkMeta,
+    ChunkType,
+    ParsedDocument,
 )
-from core.data.token_counter import count_tokens, truncate_to_tokens, _get_encoder
-
+from core.data.token_counter import count_tokens, truncate_to_tokens
 
 # ── 常量 ──────────────────────────────────────────────────────────────
 DEFAULT_MAX_TOKENS: int = 8000
@@ -167,7 +166,8 @@ def build_chunks(
             # 超长章节：尝试二次拆分
             # a. 提取该章节内的 level>=2 子边界
             sub_boundaries = [
-                c for c in chapters
+                c
+                for c in chapters
                 if c.level >= 2
                 and c.start_page >= chapter.start_page
                 and c.start_page <= chapter.end_page
@@ -182,7 +182,9 @@ def build_chunks(
                 page_range=(chapter.start_page, chapter.end_page),
                 max_tokens=max_tokens,
                 overlap_tokens=overlap_tokens,
-                sub_boundaries=[m.chapter for m in merged_sub_boundaries] if merged_sub_boundaries else None,
+                sub_boundaries=[m.chapter for m in merged_sub_boundaries]
+                if merged_sub_boundaries
+                else None,
             )
 
             if sub_chunks:
@@ -287,7 +289,10 @@ def _merge_same_page_boundaries(
     for next_boundary in sorted_boundaries[1:]:
         # 检查是否共享同一页面
         current = current_originals[0]
-        if current.start_page == current.end_page and next_boundary.start_page == next_boundary.end_page:
+        if (
+            current.start_page == current.end_page
+            and next_boundary.start_page == next_boundary.end_page
+        ):
             if current.start_page == next_boundary.start_page:
                 # 合并
                 current_originals.append(next_boundary)
@@ -301,7 +306,9 @@ def _merge_same_page_boundaries(
             end_page=max(c.end_page for c in current_originals),
             source=current_originals[0].source,
         )
-        result.append(MergedChapter(chapter=merged_chapter, original_chapters=current_originals))
+        result.append(
+            MergedChapter(chapter=merged_chapter, original_chapters=current_originals)
+        )
         current_originals = [next_boundary]
 
     # 保存最后一个
@@ -314,31 +321,10 @@ def _merge_same_page_boundaries(
             end_page=max(c.end_page for c in current_originals),
             source=current_originals[0].source,
         )
-        result.append(MergedChapter(chapter=merged_chapter, original_chapters=current_originals))
+        result.append(
+            MergedChapter(chapter=merged_chapter, original_chapters=current_originals)
+        )
 
-    return result
-
-    result: list[ChapterBoundary] = []
-    current = sorted_boundaries[0]
-
-    for next_boundary in sorted_boundaries[1:]:
-        # 检查是否共享同一页面
-        if current.start_page == current.end_page and next_boundary.start_page == next_boundary.end_page:
-            if current.start_page == next_boundary.start_page:
-                # 合并
-                current = ChapterBoundary(
-                    title=f"{current.title} / {next_boundary.title}",
-                    level=min(current.level, next_boundary.level),
-                    start_page=current.start_page,
-                    end_page=max(current.end_page, next_boundary.end_page),
-                    source=current.source,
-                )
-                continue
-
-        result.append(current)
-        current = next_boundary
-
-    result.append(current)
     return result
 
 
@@ -415,7 +401,10 @@ def _split_by_subheadings(
         for boundary in sub_boundaries:
             # 提取该子边界范围内的文本
             sub_text_parts = []
-            for page_idx in range(boundary.start_page - page_range[0], boundary.end_page - page_range[0] + 1):
+            for page_idx in range(
+                boundary.start_page - page_range[0],
+                boundary.end_page - page_range[0] + 1,
+            ):
                 if 0 <= page_idx < len(texts):
                     sub_text_parts.append(texts[page_idx])
 
@@ -499,7 +488,11 @@ def _split_by_subheadings(
     # 按子标题切分
     chunks: list[Chunk] = []
     for i, (pos, title) in enumerate(heading_positions):
-        next_pos = heading_positions[i + 1][0] if i + 1 < len(heading_positions) else len(paragraphs)
+        next_pos = (
+            heading_positions[i + 1][0]
+            if i + 1 < len(heading_positions)
+            else len(paragraphs)
+        )
         sub_text = "\n\n".join(paragraphs[pos:next_pos])
 
         if count_tokens(sub_text) <= max_tokens:
@@ -621,7 +614,11 @@ def _split_by_token_window(
             else:
                 segment_with_space = ""
 
-            full_text = overlap_text + "\n" + segment_with_space if overlap_text else segment_with_space
+            full_text = (
+                overlap_text + "\n" + segment_with_space
+                if overlap_text
+                else segment_with_space
+            )
 
             chunks.append(
                 ChunkBuilder.create_chunk(
