@@ -17,25 +17,31 @@ _ = load_dotenv()
 
 import asyncio
 
-from core.db import init_db
+from core.db import close_db, init_db
 from core.notion import get_stock_pool
 
 
 async def main() -> None:
-    with logfire.span("main_sync_job"):
-        await init_db()
+    try:
+        with logfire.span("main_sync_job"):
+            await init_db()
 
-        stock_list = await get_stock_pool()
+            stock_list = await get_stock_pool()
 
-        # 处理主营构成数据
-        from core.handlers.business import process_business_data_for_stock_list
+            # 处理主营构成数据
+            from core.handlers.business import process_business_data_for_stock_list
 
-        await process_business_data_for_stock_list(stock_list)
+            await process_business_data_for_stock_list(stock_list)
 
-        # 处理巨潮公告
-        from core.handlers.announcements import process_announcements_for_stock_list
+            # 处理巨潮公告
+            from core.handlers.announcements import process_announcements_for_stock_list
 
-        await process_announcements_for_stock_list(stock_list)
+            await process_announcements_for_stock_list(stock_list)
+    finally:
+        from core.notion.client import close_client
+
+        await close_client()
+        await close_db()
 
 
 if __name__ == "__main__":
