@@ -16,7 +16,7 @@ from typing import override
 
 import pymupdf
 
-from core.data.models import ParsedDocument, ParsedPage, ChapterBoundary
+from core.data.models import ParsedDocument, ChapterBoundary
 
 
 class ChapterDetectionStrategy(ABC):
