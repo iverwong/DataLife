@@ -8,11 +8,13 @@
 AkShare 返回 pandas DataFrame，不在此建模。
 
 参考来源: 巨潮资讯网 http://www.cninfo.com.cn
+
+Step 2 新增: 逻辑分块相关数据模型
 """
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -108,11 +110,139 @@ class AnnouncementsResponse(BaseModel):
 
 
 # ============================================================
-# PDF 解析结果数据模型
+# 逻辑分块数据模型 (Step 2)
 # ============================================================
 
+import enum
 from dataclasses import dataclass, field
-from typing import Any
+
+
+class ChunkType(enum.Enum):
+    """分块类型标识。
+
+    Attributes:
+        COMPLETE_CHAPTER: 完整章节，未经二次拆分。
+        SUB_SECTION: 按子章节（##、###）拆分的子块。
+        TOKEN_WINDOW: 纯 token 窗口兜底切分的子块。
+    """
+
+    COMPLETE_CHAPTER = "complete_chapter"
+    SUB_SECTION = "sub_section"
+    TOKEN_WINDOW = "token_window"
+
+
+@dataclass(frozen=True)
+class ChapterBoundary:
+    """章节边界信息。
+
+    由章节识别模块产出，描述一个章节在文档中的位置。
+
+    Attributes:
+        title: 章节标题。
+        level: 章节层级（1 为顶级章节）。
+        start_page: 起始页码（1-based，含）。
+        end_page: 结束页码（1-based，含）。
+        source: 识别来源，取值 "bookmark" | "toc_page" | "heading" | "fallback"。
+    """
+
+    title: str
+    level: int
+    start_page: int
+    end_page: int
+    source: str
+
+
+@dataclass(frozen=True)
+class ChunkMeta:
+    """被合并进 Chunk 的原始章节摘要信息。
+
+    用于记录同页合并等场景下，一个 Chunk 实际包含了哪些原始章节。
+    LLM 摘要时可据此对各章节分别产出结构化摘要，避免对不完整章节
+    产生模糊总结。
+
+    Attributes:
+        title: 原始章节标题。
+        level: 章节层级。
+        page_range: 章节页码范围 (start, end)，1-based，含。
+    """
+
+    title: str
+    level: int
+    page_range: tuple[int, int]
+
+
+@dataclass(frozen=True)
+class Chunk:
+    """逻辑分块结果。
+
+    每个 Chunk 对应一个可独立送入 LLM 摘要的文本块。
+
+    Attributes:
+        text: 该章节/子块的 Markdown 文本。
+        chapter_path: 章节路径，如 ["第一节 重要提示", "一、重要提示"]。
+        page_range: PDF 页码范围 (start, end)，1-based，含。
+        token_count: 该块的 token 数（tiktoken 计算）。
+        chunk_type: 分块类型。
+        needs_prior_summary: 是否需要注入前一章/前一子块的摘要作为上下文。
+        chunk_index: 在同一章节内的子块序号（0-based），完整章节为 0。
+        contained_chapters: 该 Chunk 包含的原始章节列表。
+            单章节时为 [自身]；同页合并时记录所有被合并的原始章节。
+            LLM 摘要 prompt 可注入此信息，使其按章节分别产出摘要，
+            避免对不完整或混合章节做模糊总结。
+    """
+
+    text: str
+    chapter_path: list[str]
+    page_range: tuple[int, int]
+    token_count: int
+    chunk_type: ChunkType
+    needs_prior_summary: bool = False
+    chunk_index: int = 0
+    contained_chapters: list[ChunkMeta] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class ChunkList:
+    """分块结果集合。
+
+    Attributes:
+        source: 来源标识，格式为 "{stock_code}/{report_date}"，如 "300274/2024-annual"。
+        chunks: 按文档顺序排列的 Chunk 列表。
+        total_tokens: 所有块的 token 总数。
+        chapter_count: 识别出的章节数。
+    """
+
+    source: str
+    chunks: list[Chunk]
+    total_tokens: int
+    chapter_count: int
+
+
+# ── 异常类 ──────────────────────────────────────────────────────────
+
+
+class ChunkingError(Exception):
+    """分块流程中的通用异常基类。"""
+
+    pass
+
+
+class EmptyDocumentError(ChunkingError):
+    """文档内容为空（无可分块的页面或文本）。"""
+
+    pass
+
+
+class ChapterDetectionError(ChunkingError):
+    """章节识别过程中发生不可恢复的错误。"""
+
+    pass
+
+
+class StorageError(ChunkingError):
+    """分块结果持久化读写失败。"""
+
+    pass
 
 
 @dataclass(frozen=True)
@@ -155,3 +285,11 @@ class PDFParseResult:
     def full_text(self) -> str:
         """拼接所有页面的 Markdown 文本，页间以双换行分隔。"""
         return "\n\n".join(chunk.markdown_text for chunk in self.chunks)
+
+
+# 类型别名（复用 Step 1 的解析结果）
+ParsedPage = PageChunk
+"""单页解析结果，等价于 Step 1 的 PageChunk。"""
+
+ParsedDocument = PDFParseResult
+"""完整文档解析结果，等价于 Step 1 的 PDFParseResult。"""

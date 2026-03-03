@@ -3,7 +3,7 @@ name: tdd-red
 description: '当用户提供执行计划并要求执行 Red 阶段时使用。严格按照计划中「阶段 A：/tdd-red」标注的步骤逐步执行，完成 Git 准备、契约定义、测试编写、静态检查、验证全红和 Git 提交。'
 disable-model-invocation: true
 argument-hint: '[执行计划文件路径]'
-allowed-tools: Read, Write, Grep, Glob, Bash(pytest *), Bash(basedpyright *), Bash(./venv/Scripts/ruff check:*), Bash(git *), Bash(./venv/Scripts/python *)
+allowed-tools: Read, Write, Grep, Glob, Bash(pytest *), Bash(basedpyright *), Bash(ruff *), Bash(git *)
 metadata:
   author: iver
   version: '2.0'
@@ -52,6 +52,8 @@ metadata:
 **静态检查**（计划要求时）：
 
 - 类型检查：`basedpyright <源码目录> <测试目录>`
+  - **零容忍**：所有 error 和 warning 必须全部消除，不允许残留
+  - 如果 warning 来自三方库类型存根缺失，使用 `type: ignore[<rule>]` 并附注释说明原因
 - Linter：`ruff check <源码目录> <测试目录>`
 
 **验证全红**（计划要求时）：
@@ -85,7 +87,7 @@ metadata:
 2. **创建/修改的文件清单**（附简要说明）
 3. **风格调整记录**（如果对计划中的代码做了风格修正）
 4. **疑问清单**（如有）
-5. **静态检查结果**（basedpyright + ruff）
+5. **静态检查结果**（basedpyright 0 errors / 0 warnings + ruff 0 errors）
 6. **测试运行结果**（确认全红）
 7. **Git commit hash**
 
