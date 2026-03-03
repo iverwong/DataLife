@@ -51,6 +51,20 @@ class HashContentWithHash:
 db: aiosqlite.Connection | None = None
 
 
+async def close_db() -> None:
+    """关闭全局数据库连接。
+
+    提供幂等性保护：若连接已为 None，则跳过关闭操作。
+    """
+    global db
+    if db is None:
+        logfire.debug("数据库连接已为 None，跳过关闭")
+        return
+    await db.close()
+    logfire.debug("数据库连接已关闭")
+    db = None
+
+
 @asynccontextmanager
 async def get_conn() -> AsyncIterator[aiosqlite.Connection]:
     """获取数据库连接的异步上下文管理器。
@@ -225,6 +239,7 @@ async def set_update_time(
 __all__ = [
     "HashContent",
     "HashContentWithHash",
+    "close_db",
     "get_conn",
     "init_db",
     "get_update_time",
