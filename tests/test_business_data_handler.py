@@ -152,8 +152,8 @@ class TestShouldUpdateHalfYear:
 
     @pytest.mark.unit
     @pytest.mark.fast
-    @patch("core.handlers.business.logger")
-    async def test_should_update_half_year_invalid_date(self, mock_logger):
+    @patch("logfire.warn")
+    def test_should_update_half_year_invalid_date(self, mock_warn):
         """测试非季度末日期的情况.
 
         测试条件：
@@ -170,7 +170,7 @@ class TestShouldUpdateHalfYear:
 
         # Assert
         assert result is False
-        mock_logger.warning.assert_called_once()
+        mock_warn.assert_called_once()
 
 
 class TestProcessBusinessDataForStockList:
@@ -361,9 +361,8 @@ class TestProcessBusinessDataForStockList:
 
     @pytest.mark.unit
     @pytest.mark.fast
-    @patch("core.handlers.business.logger")
     async def test_process_business_data_create_failure(
-        self, mock_logger, sample_stock_list_300274, mock_akshare_response, in_memory_db
+        self, sample_stock_list_300274, mock_akshare_response, in_memory_db
     ):
         """测试创建Notion页面失败的情况.
 
