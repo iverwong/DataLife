@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import final
 
 from core.data.models import (
@@ -251,9 +252,6 @@ def build_chunks(
         total_tokens=total_tokens,
         chapter_count=chapter_count,
     )
-
-
-from dataclasses import dataclass
 
 
 @dataclass
