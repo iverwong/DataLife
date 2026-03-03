@@ -17,7 +17,7 @@ from pathlib import Path
 import aiosqlite
 import logfire
 
-from core.data.models import Chunk, ChunkList, ChunkType
+from core.data.models import Chunk, ChunkList, ChunkMeta, ChunkType
 
 
 # ── 常量 ──────────────────────────────────────────────────────────────
@@ -50,13 +50,13 @@ async def init_chunk_tables(db_path: str | None = None) -> None:
                 chunk_index INTEGER NOT NULL,
                 chapter_title TEXT,
                 chapter_path TEXT,
+                contained_chapters TEXT,
                 page_start INTEGER NOT NULL,
                 page_end INTEGER NOT NULL,
                 token_count INTEGER NOT NULL,
                 chunk_type TEXT NOT NULL,
                 needs_prior_summary INTEGER NOT NULL,
-                md_file_path TEXT NOT NULL,
-                UNIQUE(stock_code, report_date, page_start, page_end)
+                md_file_path TEXT NOT NULL
             )
         """)
         await db.commit()
@@ -96,8 +96,8 @@ async def save_chunks(
     chunk_dir.mkdir(parents=True, exist_ok=True)
 
     # 保存 Markdown 文件并准备元数据
-    # tuple elements: (stock_code, report_date, chunk_index, chapter_title, chapter_path_json, page_start, page_end, token_count, chunk_type, needs_prior_summary, md_file_path)
-    meta_records: list[tuple[str, str, int, str, str, int, int, int, str, int, str]] = []
+    # tuple elements: (stock_code, report_date, chunk_index, chapter_title, chapter_path_json, contained_chapters_json, page_start, page_end, token_count, chunk_type, needs_prior_summary, md_file_path)
+    meta_records: list[tuple[str, str, int, str, str, str, int, int, int, str, int, str]] = []
 
     for i, chunk in enumerate(chunk_list.chunks):
         # 保存 Markdown 文件（使用序号 i 作为文件名，因为 chunk_index 可能重复）
@@ -106,12 +106,25 @@ async def save_chunks(
 
         # 准备元数据记录
         chapter_path_json = json.dumps(chunk.chapter_path, ensure_ascii=False)
+        # 序列化 contained_chapters 为 JSON 列表
+        contained_chapters_json = json.dumps(
+            [
+                {
+                    "title": cm.title,
+                    "level": cm.level,
+                    "page_range": cm.page_range,
+                }
+                for cm in chunk.contained_chapters
+            ],
+            ensure_ascii=False,
+        )
         meta_records.append((
             stock_code,
             report_date,
             chunk.chunk_index,
             chunk.chapter_path[0] if chunk.chapter_path else "",
             chapter_path_json,
+            contained_chapters_json,
             chunk.page_range[0],
             chunk.page_range[1],
             chunk.token_count,
@@ -134,8 +147,8 @@ async def save_chunks(
         await db.executemany(
             """INSERT INTO chunk_meta
                (stock_code, report_date, chunk_index, chapter_title, chapter_path,
-                page_start, page_end, token_count, chunk_type, needs_prior_summary, md_file_path)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                contained_chapters, page_start, page_end, token_count, chunk_type, needs_prior_summary, md_file_path)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             meta_records,
         )
         await db.commit()
@@ -199,6 +212,22 @@ async def load_chunks(
         chapter_path = json.loads(row["chapter_path"]) if row["chapter_path"] else []
         chunk_type = ChunkType(row["chunk_type"])
 
+        # 反序列化 contained_chapters
+        contained_chapters: list[ChunkMeta] = []
+        if row["contained_chapters"]:
+            try:
+                contained_data = json.loads(row["contained_chapters"])
+                contained_chapters = [
+                    ChunkMeta(
+                        title=item["title"],
+                        level=item["level"],
+                        page_range=tuple(item["page_range"]),
+                    )
+                    for item in contained_data
+                ]
+            except (json.JSONDecodeError, KeyError) as e:
+                logfire.warning("contained_chapters 反序列化失败: {error}", error=e)
+
         chunk = Chunk(
             text=text,
             chapter_path=chapter_path,
@@ -207,6 +236,7 @@ async def load_chunks(
             chunk_type=chunk_type,
             needs_prior_summary=bool(row["needs_prior_summary"]),
             chunk_index=row["chunk_index"],
+            contained_chapters=contained_chapters,
         )
         chunks.append(chunk)
         total_tokens += row["token_count"]

@@ -22,7 +22,7 @@ from core.data.models import (
     ChunkType,
     ParsedDocument,
 )
-from core.data.token_counter import count_tokens, truncate_to_tokens
+from core.data.token_counter import count_tokens, truncate_to_tokens, truncate_tail_tokens
 
 # ── 常量 ──────────────────────────────────────────────────────────────
 DEFAULT_MAX_TOKENS: int = 8000
@@ -185,6 +185,7 @@ def build_chunks(
                 sub_boundaries=[m.chapter for m in merged_sub_boundaries]
                 if merged_sub_boundaries
                 else None,
+                parsed=parsed,
             )
 
             if sub_chunks:
@@ -371,6 +372,7 @@ def _split_by_subheadings(
     max_tokens: int,
     overlap_tokens: int,
     sub_boundaries: list[ChapterBoundary] | None = None,
+    parsed: ParsedDocument | None = None,
 ) -> list[Chunk] | None:
     """尝试按子标题拆分超长章节。
 
@@ -386,29 +388,19 @@ def _split_by_subheadings(
         max_tokens: 单块最大 token 数。
         overlap_tokens: overlap token 数。
         sub_boundaries: 可选，章节检测器提供的 level≥2 子章节边界。
+        parsed: 可选，ParsedDocument，用于从原始页面数据提取子边界文本。
 
     Returns:
         Chunk 列表，或 None 表示无法按子标题拆分。
     """
-    if sub_boundaries:
+    if sub_boundaries and parsed:
         # 使用预检测边界拆分（按页码范围）
+        # 从 parsed 原始页面数据提取文本，而非使用 text.split("\n\n") 后用页码索引
         chunks: list[Chunk] = []
-        texts = text.split("\n\n")
-
-        current_text = ""
-        current_sub_path: list[str] = []
 
         for boundary in sub_boundaries:
-            # 提取该子边界范围内的文本
-            sub_text_parts = []
-            for page_idx in range(
-                boundary.start_page - page_range[0],
-                boundary.end_page - page_range[0] + 1,
-            ):
-                if 0 <= page_idx < len(texts):
-                    sub_text_parts.append(texts[page_idx])
-
-            sub_text = "\n\n".join(sub_text_parts)
+            # 从 ParsedDocument 按页码范围提取文本
+            sub_text = _extract_chapter_text(parsed, boundary)
             if not sub_text:
                 continue
 
@@ -432,6 +424,7 @@ def _split_by_subheadings(
                     max_tokens=max_tokens,
                     overlap_tokens=overlap_tokens,
                     sub_boundaries=None,  # 退回正则检测
+                    parsed=parsed,
                 )
                 if sub_chunks:
                     chunks.extend(sub_chunks)
@@ -604,7 +597,7 @@ def _split_by_token_window(
             # 后续片段，添加 overlap
             # 注意：full_text 的 token 数应 <= max_tokens，需要从 segment 中预留 overlap 空间
             prev_text = chunks[i - 1].text
-            overlap_text = truncate_to_tokens(prev_text, overlap_tokens)
+            overlap_text = truncate_tail_tokens(prev_text, overlap_tokens)
             overlap_token_count = count_tokens(overlap_text)
 
             # 从 segment 中截取，预留 overlap 空间

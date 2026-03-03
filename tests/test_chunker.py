@@ -179,12 +179,8 @@ class TestSplitByTokenWindow:
         for i, c in enumerate(result):
             assert c.chunk_index == i
 
-    @pytest.mark.xfail(reason="问题 6：overlap 取首部而非尾部 - 当前实现取头部token")
     def test_overlap_takes_tail_tokens(self):
         """验证 overlap 文本来自前一个 chunk 的尾部（非头部）。
-
-        当前实现使用 truncate_to_tokens(prev_text, overlap_tokens) 取得是文本开头部分。
-        正确行为应该是取文本末尾部分。
 
         测试设计：构造一个包含多个段落的文本，第一段很长（会超限被分割），
         验证第二个 chunk 的 overlap 来自第一段的**末尾**而非开头。

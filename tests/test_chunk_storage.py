@@ -213,12 +213,8 @@ class TestChunkStorage:
         assert result is None
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(reason="问题 7：contained_chapters 持久化丢失 - 当前未实现")
     async def test_contained_chapters_persistence(self, chunk_with_contained_chapters, tmp_path):
-        """contained_chapters 信息应能正确序列化/反序列化（T3/T4 验证用）。
-
-        当前标记为 xfail，因为问题 7 尚未修复。
-        """
+        """contained_chapters 信息应能正确序列化/反序列化。"""
         db_path = str(tmp_path / "test.db")
         storage_dir = tmp_path / "chunks"
         await init_chunk_tables(db_path=db_path)

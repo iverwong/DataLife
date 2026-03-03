@@ -43,7 +43,7 @@ def count_tokens(text: str) -> int:
 
 
 def truncate_to_tokens(text: str, max_tokens: int) -> str:
-    """将文本截断到指定 token 数。
+    """将文本截断到指定 token 数（取首部）。
 
     在 token 边界处截断，不会切断 UTF-8 字符。
 
@@ -62,3 +62,25 @@ def truncate_to_tokens(text: str, max_tokens: int) -> str:
         return text
     truncated_tokens = tokens[:max_tokens]
     return encoder.decode(truncated_tokens)
+
+
+def truncate_tail_tokens(text: str, max_tokens: int) -> str:
+    """将文本截断到指定 token 数（取尾部）。
+
+    从文本末尾截取指定数量的 token，常用于 overlap 场景。
+
+    Args:
+        text: 待截断文本。
+        max_tokens: 最大 token 数。
+
+    Returns:
+        截取尾部得到的文本。
+    """
+    if max_tokens <= 0:
+        return ""
+    encoder = _get_encoder()
+    tokens = encoder.encode(text)
+    if len(tokens) <= max_tokens:
+        return text
+    tail_tokens = tokens[-max_tokens:]
+    return encoder.decode(tail_tokens)
