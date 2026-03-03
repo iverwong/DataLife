@@ -179,6 +179,51 @@ class TestSplitByTokenWindow:
         for i, c in enumerate(result):
             assert c.chunk_index == i
 
+    @pytest.mark.xfail(reason="问题 6：overlap 取首部而非尾部 - 当前实现取头部token")
+    def test_overlap_takes_tail_tokens(self):
+        """验证 overlap 文本来自前一个 chunk 的尾部（非头部）。
+
+        当前实现使用 truncate_to_tokens(prev_text, overlap_tokens) 取得是文本开头部分。
+        正确行为应该是取文本末尾部分。
+
+        测试设计：构造一个包含多个段落的文本，第一段很长（会超限被分割），
+        验证第二个 chunk 的 overlap 来自第一段的**末尾**而非开头。
+        """
+        # 构造一个多段落文本，第一段超长
+        # 段落1开头是 "START"，结尾是 "END"
+        # 段落2是不同的内容
+        text = "START" + "AAAA" * 50 + "\n\n" + "BBBB" * 50 + "\n\n" + "CCCC" * 50
+
+        result = _split_by_token_window(
+            text, ["测试"], (1, 3), max_tokens=100, overlap_tokens=20
+        )
+
+        # 应该产生至少 2 个 chunk
+        assert len(result) >= 2, f"Expected at least 2 chunks, got {len(result)}"
+
+        # 获取第一个 chunk 和第二个 chunk
+        first_chunk = result[0].text
+        second_chunk = result[1].text
+
+        # 第一个 chunk 应该以 "START" 开头
+        assert first_chunk.startswith("START"), f"First chunk should start with START, got: {first_chunk[:50]}"
+
+        # 第二个 chunk 应该包含前一个 chunk 的末尾内容（"AAAA"区域）
+        # 当前错误实现取头部，所以 second_chunk 会以 "BBBB" 或 "CCCC" 开头
+        # 正确实现应该取尾部，所以 second_chunk 应该包含 "AAAA" 或更靠后的内容
+
+        # 验证第二个 chunk 的开头不应该紧接第一个 chunk 的开头（那是错误的取头部方式）
+        # 如果取尾部，第二个 chunk 应该包含前一个 chunk 后半部分的内容
+        # 当前 bug 实现会取 "START" + "AAAA"... 的开头部分
+        # 正确实现应该取 "...AAAA" (末尾部分)
+
+        # 检查：如果 overlap 取尾部，second_chunk 不应该以 "START" 开头
+        # 因为 "START" 是第一个 chunk 的开头，不是末尾
+        assert not second_chunk.startswith("START"), (
+            "Overlap should NOT contain head of previous chunk (START). "
+            f"Second chunk starts with: {second_chunk[:50]}"
+        )
+
 
 # ── 中文编号子标题拆分测试 ────────────────────────────────────────────
 
