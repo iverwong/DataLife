@@ -14,9 +14,11 @@ Step 2 新增: 逻辑分块相关数据模型
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any, ClassVar, override
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from core.exceptions import DataLifeError
 
 # ============================================================
 # 巨潮资讯网 — 股票代码映射
@@ -221,10 +223,11 @@ class ChunkList:
 # ── 异常类 ──────────────────────────────────────────────────────────
 
 
-class ChunkingError(Exception):
+class ChunkingError(DataLifeError):
     """分块流程中的通用异常基类。"""
 
-    pass
+    def __init__(self, message: str, *, cause: Exception | None = None) -> None:
+        super().__init__(message, cause=cause)
 
 
 class EmptyDocumentError(ChunkingError):
