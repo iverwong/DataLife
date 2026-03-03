@@ -16,7 +16,7 @@ import akshare as ak  # pyright: ignore[reportMissingTypeStubs]
 import httpx
 
 from core.data.announcement import Announcement
-from core.data.models import AnnouncementItem, AnnouncementsResponse
+from core.data.api_models import AnnouncementItem, AnnouncementsResponse
 from tests.resource.manager import ResourceType, resource_manager
 
 

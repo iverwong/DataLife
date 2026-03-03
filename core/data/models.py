@@ -1,122 +1,14 @@
-"""
-外部数据源 API 响应 Pydantic 模型
+"""内部领域数据模型。
 
-覆盖本项目实际调用的以下端点:
-- POST http://www.cninfo.com.cn/new/hisAnnouncement/query  (公告查询)
-- GET  http://www.cninfo.com.cn/new/data/szse_stock.json   (股票代码映射)
-
-AkShare 返回 pandas DataFrame，不在此建模。
-
-参考来源: 巨潮资讯网 http://www.cninfo.com.cn
-
-Step 2 新增: 逻辑分块相关数据模型
+包含逻辑分块流程中使用的 dataclass 和类型别名。
 """
 
 from __future__ import annotations
 
-from typing import Any, ClassVar, override
-
-from pydantic import BaseModel, ConfigDict, Field
-
-from core.exceptions import DataLifeError
-
-# ============================================================
-# 巨潮资讯网 — 股票代码映射
-# GET http://www.cninfo.com.cn/new/data/szse_stock.json
-# ============================================================
-
-
-class StockItem(BaseModel):
-    """股票列表中的单只股票条目
-
-    仅建模项目实际使用的字段，其余字段通过 extra="ignore" 忽略。
-    """
-
-    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore")
-
-    code: str
-    orgId: str
-
-
-class StockListResponse(BaseModel):
-    """股票代码映射 API 响应
-
-    GET http://www.cninfo.com.cn/new/data/szse_stock.json
-    """
-
-    stockList: list[StockItem]
-
-
-# ============================================================
-# 巨潮资讯网 — 公告查询
-# POST http://www.cninfo.com.cn/new/hisAnnouncement/query
-# ============================================================
-
-
-class AnnouncementItem(BaseModel):
-    """公告查询结果中的单条公告
-
-    字段说明:
-        secCode: 股票代码
-        secName: 股票简称
-        orgId: 机构 ID
-        announcementId: 公告唯一标识
-        announcementTitle: 公告标题
-        announcementTime: 公告时间（毫秒时间戳）
-        adjunctUrl: 附件相对路径
-        adjunctSize: 附件大小（KB）
-        adjunctType: 附件类型（如 "PDF"）
-    """
-
-    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore")
-
-    id: int | None = None
-    secCode: str
-    secName: str
-    orgId: str
-    announcementId: str
-    announcementTitle: str
-    announcementTime: int
-    adjunctUrl: str
-    adjunctSize: int
-    adjunctType: str | None = None
-    storageTime: str | None = None
-    columnId: str | None = None
-    pageColumn: str | None = None
-    announcementType: str | None = None
-    associateAnnouncement: str | None = None
-    important: bool | None = None
-    batchNum: str | None = None
-    announcementContent: str = ""
-    orgName: str | None = None
-    tileSecName: str | None = None
-    shortTitle: str | None = None
-    announcementTypeName: str | None = None
-    secNameList: list[dict[str, str]] | None = None
-
-
-class AnnouncementsResponse(BaseModel):
-    """公告查询 API 响应
-
-    POST http://www.cninfo.com.cn/new/hisAnnouncement/query
-    """
-
-    classifiedAnnouncements: object | None = Field(default=None)
-    totalSecurities: int = 0
-    totalAnnouncement: int = 0
-    totalRecordNum: int = 0
-    announcements: list[AnnouncementItem] | None = None
-    categoryList: list[object] | None = None
-    hasMore: bool = False
-    totalpages: int = 0
-
-
-# ============================================================
-# 逻辑分块数据模型 (Step 2)
-# ============================================================
+from dataclasses import dataclass, field
+from typing import Any
 
 import enum
-from dataclasses import dataclass, field
 
 
 class ChunkType(enum.Enum):
@@ -231,34 +123,6 @@ class ChunkList:
     chunks: list[Chunk]
     total_tokens: int
     chapter_count: int
-
-
-# ── 异常类 ──────────────────────────────────────────────────────────
-
-
-class ChunkingError(DataLifeError):
-    """分块流程中的通用异常基类。"""
-
-    def __init__(self, message: str, *, cause: Exception | None = None) -> None:
-        super().__init__(message, cause=cause)
-
-
-class EmptyDocumentError(ChunkingError):
-    """文档内容为空（无可分块的页面或文本）。"""
-
-    pass
-
-
-class ChapterDetectionError(ChunkingError):
-    """章节识别过程中发生不可恢复的错误。"""
-
-    pass
-
-
-class StorageError(ChunkingError):
-    """分块结果持久化读写失败。"""
-
-    pass
 
 
 @dataclass(frozen=True)

@@ -10,7 +10,7 @@ from functools import lru_cache
 import httpx
 import logfire
 
-from .models import AnnouncementItem, AnnouncementsResponse, StockListResponse
+from .api_models import AnnouncementItem, AnnouncementsResponse, StockListResponse
 
 
 @dataclass(frozen=True)
