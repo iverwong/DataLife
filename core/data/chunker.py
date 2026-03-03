@@ -21,6 +21,7 @@ from core.data.models import (
     ChunkList,
     ChunkMeta,
     ChunkType,
+    MergedChapter,
     ParsedDocument,
 )
 from core.data.token_counter import count_tokens, truncate_to_tokens, truncate_tail_tokens
@@ -252,14 +253,6 @@ def build_chunks(
         total_tokens=total_tokens,
         chapter_count=chapter_count,
     )
-
-
-@dataclass
-class MergedChapter:
-    """合并后的章节信息，包含原始章节列表。"""
-
-    chapter: ChapterBoundary
-    original_chapters: list[ChapterBoundary]
 
 
 def _merge_same_page_boundaries(

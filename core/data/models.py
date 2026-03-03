@@ -155,6 +155,19 @@ class ChapterBoundary:
 
 
 @dataclass(frozen=True)
+class MergedChapter:
+    """合并后的章节信息，包含原始章节列表。
+
+    Attributes:
+        chapter: 合并后的章节边界。
+        original_chapters: 原始章节列表（用于追溯被合并的章节）。
+    """
+
+    chapter: ChapterBoundary
+    original_chapters: list[ChapterBoundary]
+
+
+@dataclass(frozen=True)
 class ChunkMeta:
     """被合并进 Chunk 的原始章节摘要信息。
 
