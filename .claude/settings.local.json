@@ -9,7 +9,9 @@
       "Bash(./venv/Scripts/python:*)",
       "Bash(./venv/Scripts/pytest:*)",
       "Bash(./venv/Scripts/ruff check:*)",
-      "Bash(ruff check:*)"
+      "Bash(ruff check:*)",
+      "Bash(git:*)",
+      "Bash(./venv/Scripts/activate:*)"
     ],
     "deny": [
       "WebFetch",

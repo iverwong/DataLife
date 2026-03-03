@@ -3,7 +3,7 @@ name: tdd-green
 description: '当契约和测试已就绪（全红状态）且需要执行 Green 阶段时使用。严格按照计划中「阶段 B：/tdd-green」标注的步骤逐步执行，完成核心实现参考学习、逐模块实现、全量验证、测试补充和 Git 提交。'
 disable-model-invocation: true
 argument-hint: '[执行计划文件路径]'
-allowed-tools: Read, Write, Grep, Glob, Bash(pytest *), Bash(basedpyright *), Bash(./venv/Scripts/ruff check:*), Bash(git *), Bash(./venv/Scripts/python *)
+allowed-tools: Read, Write, Grep, Glob, Bash(pytest *), Bash(basedpyright *), Bash(ruff *), Bash(git *)
 metadata:
   author: iver
   version: '2.0'
@@ -45,6 +45,11 @@ metadata:
 - 复用项目中已有的工具函数，避免重复造轮子
 - 按计划的「核心实现参考」中的 API 示例和推荐模式编写代码
 - 最小实现原则：只编写让测试通过的代码，不做过度设计
+  **静态检查（每个模块实现后立即执行）**：
+- `basedpyright <源码目录> <测试目录>`：**零容忍**，所有 error 和 warning 必须全部消除
+  - 如果 warning 来自三方库类型存根缺失，使用 `type: ignore[<rule>]` 并附注释说明原因
+  - 如果报错来自契约定义（如类型签名不兼容），记录到「契约问题」中而非擅自修改签名
+- `ruff check <源码目录> <测试目录>`：同样零容忍
 
 **问题记录**（持续）：
 
@@ -73,7 +78,11 @@ metadata:
 
 ### 类型检查或 linter 报错
 
-优先修复。如果报错来自契约定义（如类型签名不兼容），记录到「契约问题」中而非擅自修改签名。
+**必须修复至 0 errors / 0 warnings**，不允许残留。处理优先级：
+
+1. 自身实现代码的类型问题 → 直接修复
+2. 三方库类型存根缺失 → # pyright: ignore[reportMissingTypeStubs] 并附注释说明，适时使用pyright: ignore来忽略Any、Unknown等错误
+3. 契约定义导致的类型不兼容 → 记录到「契约问题」中，不擅自修改签名
 
 ## 输出格式
 
@@ -92,8 +101,8 @@ metadata:
 ### 3. 测试运行结果
 
 - 总测试数 / 通过数 / 失败数
-- 类型检查结果
-- Linter 结果
+- basedpyright 结果（必须 0 errors / 0 warnings）
+- ruff 结果（必须 0 errors）
 
 ### 4. 实现问题总结
 
