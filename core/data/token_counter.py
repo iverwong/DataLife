@@ -20,7 +20,10 @@ def _get_encoder() -> tiktoken.Encoding:
     Returns:
         tiktoken.Encoding 实例。
     """
-    ...
+    global _encoder  # noqa: PLW0603
+    if _encoder is None:
+        _encoder = tiktoken.get_encoding(_ENCODING_NAME)
+    return _encoder
 
 
 def count_tokens(text: str) -> int:
@@ -32,7 +35,11 @@ def count_tokens(text: str) -> int:
     Returns:
         token 数量。
     """
-    ...
+    if not text:
+        return 0
+    encoder = _get_encoder()
+    tokens = encoder.encode(text)
+    return len(tokens)
 
 
 def truncate_to_tokens(text: str, max_tokens: int) -> str:
@@ -47,4 +54,11 @@ def truncate_to_tokens(text: str, max_tokens: int) -> str:
     Returns:
         截断后的文本。
     """
-    ...
+    if max_tokens <= 0:
+        return ""
+    encoder = _get_encoder()
+    tokens = encoder.encode(text)
+    if len(tokens) <= max_tokens:
+        return text
+    truncated_tokens = tokens[:max_tokens]
+    return encoder.decode(truncated_tokens)
