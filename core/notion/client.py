@@ -55,3 +55,25 @@ httpx_client = httpx.AsyncClient(
 
 notion = AsyncClient(client=httpx_client, auth=os.getenv("NOTION_TOKEN"))
 logfire.debug("Notion AsyncClient 初始化完成")
+
+
+async def close_client() -> None:
+    """关闭 httpx.AsyncClient 客户端。
+
+    提供幂等性保护：若客户端已关闭，则跳过关闭操作。
+    同时处理事件循环已关闭的情况。
+    """
+    if httpx_client.is_closed:
+        logfire.debug("httpx.AsyncClient 已关闭，跳过")
+        return
+    try:
+        await httpx_client.aclose()
+        logfire.debug("httpx.AsyncClient 已关闭")
+    except RuntimeError as e:
+        if "Event loop is closed" in str(e):
+            logfire.debug("事件循环已关闭，跳过 httpx 客户端关闭")
+        else:
+            raise
+
+
+__all__ = ["close_client"]

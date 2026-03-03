@@ -11,7 +11,8 @@
       "Bash(./venv/Scripts/ruff check:*)",
       "Bash(ruff check:*)",
       "Bash(git:*)",
-      "Bash(./venv/Scripts/activate:*)"
+      "Bash(./venv/Scripts/activate:*)",
+      "Bash(where ruff:*)"
     ],
     "deny": [
       "WebFetch",
