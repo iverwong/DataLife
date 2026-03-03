@@ -281,12 +281,8 @@ class TestDataStructures:
 
 # ── _clean_markdown 边界测试（T4：问题 5）───────────────────────────────
 
-# 注意：这些测试是同步的，需要单独标记为非异步
 class TestCleanMarkdown:
-    """_clean_markdown 边界测试。"""
-
-    # 移除全局异步标记
-    pytestmark = []
+    """_clean_markdown 边界测试（T4：问题 5）。"""
 
     def test_number_with_spaces_removed(self):
         """带前后空格的数字行应被移除。"""
