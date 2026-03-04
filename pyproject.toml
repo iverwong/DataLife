@@ -1,0 +1,6 @@
+[tool.basedpyright]
+include = ["core"]
+pythonVersion = "3.13"
+
+[tool.ruff]
+include = ["core/**/*.py"]

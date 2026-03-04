@@ -15,8 +15,8 @@
       "Bash(where ruff:*)"
     ],
     "deny": [
-      "WebFetch",
       "WebSearch"
     ]
-  }
+  },
+  "skipWebFetchPreflight": true
 }
