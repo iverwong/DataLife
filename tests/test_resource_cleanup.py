@@ -20,19 +20,22 @@ class TestCloseClient:
             "close_client 函数不存在"
         )
 
+        # 懒加载模式：先调用 get_httpx_client() 触发创建
+        notion_client_module.get_httpx_client()
+
         # 验证可以调用
         asyncio.get_event_loop().run_until_complete(
             notion_client_module.close_client()
         )
 
         # 验证客户端已关闭
-        assert notion_client_module.httpx_client.is_closed is True
+        assert notion_client_module.httpx_client is None or notion_client_module.httpx_client.is_closed is True
 
     def test_close_client_idempotent(self):
         """验证连续调用 close_client() 两次不会抛出异常。"""
         from core.notion import client as notion_client_module
 
-        # 第一次调用
+        # 第一次调用（客户端已关闭）
         asyncio.get_event_loop().run_until_complete(
             notion_client_module.close_client()
         )

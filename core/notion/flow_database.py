@@ -10,7 +10,7 @@ from typing import Literal
 
 import logfire
 
-from .client import notion
+from .client import get_notion_client
 from .datetime_helper import convert_datetime_to_notion_date
 from .models import (
     Block,
@@ -105,6 +105,7 @@ async def create_dataflow_page(
         )
 
         logfire.debug("创建 Notion 页面: {title}", title=title)
+        notion = get_notion_client()
         await notion.pages.create(**request.model_dump(exclude_none=True))
         logfire.info("页面创建成功: {title}", title=title)
         return True
