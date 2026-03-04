@@ -1,5 +1,6 @@
 import os
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -93,12 +94,60 @@ def in_memory_db():
         loop.run_until_complete(core.db.close_db())
 
 
-@pytest.fixture(scope="session", autouse=True)
-def _cleanup_global_resources():
-    """Session 级别的全局资源清理 fixture。
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """pytest 会话结束钩子：在所有测试和 fixture 清理后执行。
 
-    注意：由于 session scope fixture 的 teardown 在事件循环关闭后执行，
-    我们无法在这里安全地关闭 httpx 客户端。
-    资源清理主要依赖 in_memory_db fixture 的 per-test teardown。
+    使用 asyncio.run() 创建全新事件循环来执行异步清理，
+    避免 pytest-asyncio 事件循环已关闭导致的问题。
     """
-    yield
+    import core.db
+    from core.notion import client as notion_client_module
+
+    async def _cleanup() -> None:
+        """执行异步资源清理。"""
+        # 关闭 httpx 客户端
+        await notion_client_module.close_client()
+        # 关闭数据库连接
+        await core.db.close_db()
+
+    try:
+        asyncio.run(_cleanup())
+    except RuntimeError as e:
+        # 如果 asyncio.run() 失败（httpx 绑定旧循环引用导致 aclose() 挂起），
+        # 回退到同步强制关闭传输层
+        if "Event loop is closed" in str(e):
+            # 防御性兜底：访问私有 API 关闭传输层
+            # 注意：httpx 版本升级时需验证此调用仍然有效
+            try:
+                client = notion_client_module.httpx_client
+                if client is not None and not client.is_closed:
+                    # pyright: ignore[reportPrivateImportUsage]
+                    client._transport.close()
+            except Exception as cleanup_error:
+                import logging
+
+                logging.warning(
+                    f"Failed to close httpx transport layer: {cleanup_error}"
+                )
+
+            # 单独执行 close_db（不依赖 asyncio.run）
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(core.db.close_db())
+            except Exception as db_error:
+                logging.warning(f"Failed to close database: {db_error}")
+        else:
+            raise
+
+    # 调试：打印当前线程状态（仅在测试失败时查看）
+    if exitstatus != 0:
+        non_daemon_threads = [
+            t for t in threading.enumerate() if not t.daemon
+        ]
+        import logging
+
+        logging.debug(
+            f"pytest_sessionfinish: non-daemon threads: "
+            f"{[t.name for t in non_daemon_threads]}"
+        )

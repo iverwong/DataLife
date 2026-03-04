@@ -2,7 +2,7 @@ import os
 from dataclasses import dataclass
 import logfire
 
-from .client import notion
+from .client import get_notion_client
 from .models import QueryDataSourceResponse, RichTextPropertyResponse
 from .retry_helper import with_retry
 
@@ -32,6 +32,7 @@ async def get_stock_pool() -> list[StockPool]:
     """
     stock_pool_id = os.getenv("STOCK_POOL") or ""
     logfire.info("查询股票池数据源")
+    notion = get_notion_client()
     try:
         raw_response = await notion.data_sources.query(stock_pool_id)  # pyright: ignore[reportAny]
         if not raw_response:

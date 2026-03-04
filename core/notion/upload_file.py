@@ -13,7 +13,7 @@ from core.models.upload import (
     FileUploadWithContent,
 )
 
-from .client import notion
+from .client import get_notion_client
 from .models import FileImportError, FileUploadResponse
 from .retry_helper import with_retry
 
@@ -89,6 +89,7 @@ async def _upload_internal_and_wait(
     Returns:
         单个文件的上传结果。
     """
+    notion = get_notion_client()
     with logfire.span("上传文件", stock=file_info.stock, title=file_info.title):
         logfire.debug("创建 Notion 上传对象: {title}", title=file_info.title)
     create_result = FileUploadResponse.model_validate(
@@ -202,6 +203,7 @@ async def _upload_external_and_wait(file_info: FileUploadRequest) -> FileUploadR
     Returns:
         单个文件的上传结果。
     """
+    notion = get_notion_client()
     with logfire.span("外链上传", stock=file_info.stock, title=file_info.title):
         logfire.debug("外链上传: {title}", title=file_info.title)
     try:
@@ -296,6 +298,7 @@ async def _poll_upload_status(
     Returns:
         最终的文件上传状态响应（uploaded/failed/超时）。
     """
+    notion = get_notion_client()
     intervals = [1, 2, 4, 8, 16]
 
     for attempt in range(max_attempts):
