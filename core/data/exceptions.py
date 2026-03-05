@@ -31,3 +31,47 @@ class StorageError(ChunkingError):
     """分块结果持久化读写失败。"""
 
     pass
+
+
+# --- 摘要流程异常 ---
+
+
+class SummarizationError(DataLifeError):
+    """摘要流程基础异常。"""
+
+    pass
+
+
+class LLMResponseError(SummarizationError):
+    """LLM 返回内容无法解析或为空。
+
+    降级行为：重试 retries 次后抛出，由上层决定是否跳过该 Chunk。
+    """
+
+    pass
+
+
+class ContextBriefError(SummarizationError):
+    """上下文注入构建失败。
+
+    降级行为：跳过 context_brief 注入，仅用当前 Chunk 独立摘要。
+    记录 warning 日志，不中断流程。
+    """
+
+    pass
+
+
+class ChapterMergeError(SummarizationError):
+    """章节合并失败。
+
+    降级行为：返回子块摘要的简单拼接（取各子块 detailed_summary 拼接），
+    标记 degraded=True，记录 warning 日志。
+    """
+
+    pass
+
+
+class SummaryStorageError(SummarizationError):
+    """摘要存储读写异常。"""
+
+    pass
