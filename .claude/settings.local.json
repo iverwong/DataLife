@@ -1,7 +1,7 @@
 {
   "statusLine": {
     "type": "command",
-    "command": "python -c \"import json, sys; d=json.load(sys.stdin); cw=d.get('context_window',{}); input_t=cw.get('total_input_tokens',0); output_t=cw.get('total_output_tokens',0); model=d.get('model',{}).get('display_name','Claude'); used_k=round((input_t+output_t)/1024,1) if input_t or output_t else 0; print(f'[{model}] {used_k}K/200K' if used_k else f'[{model}] Starting...')\""
+    "command": "python -c \"import json, sys; d=json.load(sys.stdin); cw=d.get('context_window',{}); cu=cw.get('current_usage') or {}; input_t=cu.get('input_tokens',0); output_t=cu.get('output_tokens',0); model=d.get('model',{}).get('display_name','Claude'); max_tokens=cw.get('max_tokens',200000); used=input_t+output_t; pct=round(used/max_tokens*100,1) if max_tokens else 0; used_k=round(used/1024,1) if used else 0; color='\\\\033[32m' if pct<30 else '\\\\033[33m' if pct<50 else '\\\\033[38;5;208m' if pct<70 else '\\\\033[31m'; reset='\\\\033[0m'; print(f'{color}[{model}] {used_k}K({pct}%){reset}' if used else f'[{model}] Starting...')\""
   },
   "permissions": {
     "allow": [
