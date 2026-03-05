@@ -1,4 +1,8 @@
 {
+  "statusLine": {
+    "type": "command",
+    "command": "python -c \"import json, sys; d=json.load(sys.stdin); cw=d.get('context_window',{}); input_t=cw.get('total_input_tokens',0); output_t=cw.get('total_output_tokens',0); model=d.get('model',{}).get('display_name','Claude'); used_k=round((input_t+output_t)/1024,1) if input_t or output_t else 0; print(f'[{model}] {used_k}K/200K' if used_k else f'[{model}] Starting...')\""
+  },
   "permissions": {
     "allow": [
       "mcp__MiniMax__web_search",
