@@ -52,3 +52,6 @@ Thumbs.db
 
 # qoder archive
 .qoder/
+
+# ruff cache
+/.ruff_cache/
