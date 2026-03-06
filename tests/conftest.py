@@ -6,7 +6,6 @@ from pathlib import Path
 import pytest
 import asyncio
 from dotenv import load_dotenv
-from unittest.mock import patch
 
 
 # 将项目根目录添加到 sys.path
@@ -33,65 +32,31 @@ def test_env():
     }
 
 
-# 用于存储测试数据库单例连接
-_test_db_conn = None
-
-
 @pytest.fixture
-def in_memory_db():
-    """提供内存数据库连接，替换真实数据库。"""
+async def test_engine():
+    """创建 :memory: + StaticPool 的测试引擎。
 
-    async def _get_test_db():
-        global _test_db_conn
-        import aiosqlite
+    StaticPool 确保所有操作共享同一连接（异步模式下 :memory: 的每个连接是独立空数据库）。
+    """
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.pool import StaticPool
 
-        if _test_db_conn is not None:
-            return _test_db_conn
+    from core.db.engine import configure_for_testing, dispose_engine
+    from core.db.models import Base
 
-        _test_db_conn = await aiosqlite.connect(":memory:")
-        # 初始化测试数据库表结构
-        await _test_db_conn.executescript("""
-            CREATE TABLE IF NOT EXISTS update_records (
-                stock TEXT NOT NULL,
-                key TEXT NOT NULL,
-                update_time TEXT,
-                PRIMARY KEY (stock, key)
-            );
-            CREATE TABLE IF NOT EXISTS hash (
-                hash TEXT PRIMARY KEY,
-                create_at TEXT NOT NULL
-            );
-        """)
-        return _test_db_conn
-
-    with patch("core.db._get_db", _get_test_db):
-        yield _get_test_db
-
-    # Teardown: 关闭连接并重置全局状态
-    import asyncio
-    import core.db
-
-    global _test_db_conn
-    if _test_db_conn is not None:
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            # 没有运行中的事件循环，创建一个新的
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-        loop.run_until_complete(_test_db_conn.close())
-        _test_db_conn = None
-
-    # 重置 core.db.db 全局变量
-    if core.db.db is not None:
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-        loop.run_until_complete(core.db.close_db())
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        poolclass=StaticPool,
+        connect_args={"check_same_thread": False, "autocommit": False},
+    )
+    # 建表
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    # 注入全局
+    configure_for_testing(engine)
+    yield engine
+    # 清理
+    await dispose_engine()
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
@@ -100,18 +65,19 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     使用 asyncio.run() 创建全新事件循环来执行异步清理，
     避免 pytest-asyncio 事件循环已关闭导致的问题。
     """
-    import core.db
+    import asyncio as asyncio_module
     from core.notion import client as notion_client_module
+    from core.db import engine as db_engine
 
     async def _cleanup() -> None:
         """执行异步资源清理。"""
         # 关闭 httpx 客户端
         await notion_client_module.close_client()
-        # 关闭数据库连接
-        await core.db.close_db()
+        # 关闭数据库引擎
+        await db_engine.dispose_engine()
 
     try:
-        asyncio.run(_cleanup())
+        asyncio_module.run(_cleanup())
     except RuntimeError as e:
         # 如果 asyncio.run() 失败（httpx 绑定旧循环引用导致 aclose() 挂起），
         # 回退到同步强制关闭传输层
@@ -130,11 +96,11 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
                     f"Failed to close httpx transport layer: {cleanup_error}"
                 )
 
-            # 单独执行 close_db（不依赖 asyncio.run）
+            # 单独执行 dispose_engine（不依赖 asyncio.run）
             try:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(core.db.close_db())
+                loop = asyncio_module.new_event_loop()
+                asyncio_module.set_event_loop(loop)
+                loop.run_until_complete(db_engine.dispose_engine())
             except Exception as db_error:
                 logging.warning(f"Failed to close database: {db_error}")
         else:

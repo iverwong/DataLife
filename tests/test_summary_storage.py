@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import pytest
-from pathlib import Path
 
 from core.data.summary_models import (
     ChapterSummary,
@@ -14,19 +13,11 @@ from core.data.summary_models import (
     KeyDataItem,
 )
 from core.data.summary_storage import (
-    init_summary_tables,
     load_document_summary,
     save_chapter_summary,
     save_chunk_summary,
     save_document_summary,
 )
-
-
-# ── Fixtures ────────────────────────────────────────────
-@pytest.fixture
-def tmp_db(tmp_path: Path) -> Path:
-    """临时数据库文件路径。"""
-    return tmp_path / "test_summary.db"
 
 
 @pytest.fixture
@@ -41,67 +32,34 @@ def sample_chunk_summary() -> ChunkSummaryOutput:
     )
 
 
-# ── init_summary_tables ────────────────────────────────
-class TestInitSummaryTables:
-    @pytest.mark.asyncio
-    async def test_creates_tables(self, tmp_db: Path) -> None:
-        """首次调用创建所有摘要表。"""
-        await init_summary_tables(db_path=tmp_db)
-        # 验证表存在（通过 aiosqlite 查询 sqlite_master）
-        import aiosqlite
-
-        async with aiosqlite.connect(tmp_db) as db:
-            cursor = await db.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            )
-            tables = {row[0] for row in await cursor.fetchall()}
-        assert "chunk_summary" in tables
-        assert "chapter_summary" in tables
-        assert "document_summary" in tables
-
-    @pytest.mark.asyncio
-    async def test_idempotent(self, tmp_db: Path) -> None:
-        """重复调用不报错（IF NOT EXISTS）。"""
-        await init_summary_tables(db_path=tmp_db)
-        await init_summary_tables(db_path=tmp_db)
-
-
-# ── save / load ────────────────────────────────────────
 class TestSaveAndLoad:
-    @pytest.mark.asyncio
-    async def test_save_chunk_summary(
-        self, tmp_db: Path, sample_chunk_summary: ChunkSummaryOutput
-    ) -> None:
-        """保存 Chunk 摘要并验证返回 ID。"""
-        await init_summary_tables(db_path=tmp_db)
-        # 需要先创建 chunk_meta 表和记录以提供外键
-        # 此处简化：先创建 chunk_meta 表
-        import aiosqlite
-
-        async with aiosqlite.connect(tmp_db) as db:
-            await db.execute(
-                "CREATE TABLE IF NOT EXISTS chunk_meta "
-                "(id INTEGER PRIMARY KEY, stock_code TEXT, report_date TEXT)"
-            )
-            cursor = await db.execute(
-                "INSERT INTO chunk_meta (stock_code, report_date) VALUES (?, ?)",
-                ("600000", "2024-12-31"),
-            )
-            chunk_meta_id = cursor.lastrowid
-            await db.commit()
-
-        record_id = await save_chunk_summary(
-            chunk_meta_id=chunk_meta_id,  # type: ignore[arg-type]
-            summary=sample_chunk_summary,
-            db_path=tmp_db,
-        )
-        assert isinstance(record_id, int)
-        assert record_id > 0
+    """保存/加载测试。"""
 
     @pytest.mark.asyncio
-    async def test_save_and_load_document_summary(self, tmp_db: Path) -> None:
+    async def test_save_and_load_document_summary(self, test_engine):
         """保存并加载完整文档摘要，验证往返一致性。"""
-        await init_summary_tables(db_path=tmp_db)
+        # 需要先准备 chunk_meta 记录（提供外键）
+        from core.db import get_session
+        from core.db.models import ChunkMetaRecord
+
+        async with get_session() as session:
+            meta = ChunkMetaRecord(
+                stock_code="600000",
+                report_date="2024-12-31",
+                chunk_index=0,
+                chapter_title="第一节",
+                chapter_path='["第一节"]',
+                contained_chapters=None,
+                page_start=1,
+                page_end=5,
+                token_count=100,
+                chunk_type="complete_chapter",
+                needs_prior_summary=0,
+                md_file_path="/tmp/test.md",
+            )
+            session.add(meta)
+            # 不需要 commit，get_session 会自动 commit
+
         doc = DocumentSummary(
             source="600000_2024-12-31",
             chapter_summaries=[],
@@ -110,20 +68,100 @@ class TestSaveAndLoad:
             total_chunks_processed=8,
             total_chapters=4,
         )
-        await save_document_summary(doc, db_path=tmp_db)
-        loaded = await load_document_summary(
-            "600000", "2024-12-31", db_path=tmp_db
-        )
+        await save_document_summary(doc)
+        loaded = await load_document_summary("600000", "2024-12-31")
         assert loaded is not None
         assert loaded.source == "600000_2024-12-31"
         assert loaded.total_chunks_processed == 8
         assert len(loaded.all_key_data) == 1
 
     @pytest.mark.asyncio
-    async def test_load_nonexistent_returns_none(self, tmp_db: Path) -> None:
-        """查询不存在的记录返回 None。"""
-        await init_summary_tables(db_path=tmp_db)
-        result = await load_document_summary(
-            "999999", "2099-01-01", db_path=tmp_db
+    async def test_save_chunk_summary(self, test_engine, sample_chunk_summary):
+        """保存 Chunk 摘要并验证返回 ID。"""
+        # 需要先准备 chunk_meta 记录
+        from core.db import get_session
+        from core.db.models import ChunkMetaRecord
+
+        async with get_session() as session:
+            meta = ChunkMetaRecord(
+                stock_code="600000",
+                report_date="2024-12-31",
+                chunk_index=0,
+                chapter_title="第一节",
+                chapter_path='["第一节"]',
+                contained_chapters=None,
+                page_start=1,
+                page_end=5,
+                token_count=100,
+                chunk_type="complete_chapter",
+                needs_prior_summary=0,
+                md_file_path="/tmp/test.md",
+            )
+            session.add(meta)
+
+        record_id = await save_chunk_summary(
+            chunk_meta_id=1,
+            summary=sample_chunk_summary,
         )
-        assert result is None
+        assert isinstance(record_id, int)
+        assert record_id > 0
+
+    @pytest.mark.asyncio
+    async def test_save_chapter_summary(self, test_engine):
+        """保存章节摘要并验证返回 ID。"""
+        chapter = ChapterSummary(
+            chapter_title="第一节",
+            chapter_path=["第一节", "子节"],
+            summary=ChunkSummaryOutput(
+                chapter_title="第一节",
+                chapter_path=["第一节", "子节"],
+                key_points=["要点1"],
+                detailed_summary="详细摘要",
+                key_data=[KeyDataItem(label="营收", value=1e9, unit="元")],
+                context_brief="上下文",
+            ),
+            chunk_count=2,
+        )
+        record_id = await save_chapter_summary(
+            chapter=chapter,
+            stock_code="600000",
+            report_date="2024-12-31",
+        )
+        assert isinstance(record_id, int)
+        assert record_id > 0
+
+    @pytest.mark.asyncio
+    async def test_document_summary_upsert(self, test_engine):
+        """验证先查后更新 upsert 语义。"""
+        # 第一次保存
+        doc1 = DocumentSummary(
+            source="600000_2024-12-31",
+            chapter_summaries=[],
+            all_key_points=["第一版要点"],
+            all_key_data=[],
+            total_chunks_processed=1,
+            total_chapters=1,
+        )
+        await save_document_summary(doc1)
+
+        # 加载验证
+        loaded1 = await load_document_summary("600000", "2024-12-31")
+        assert loaded1 is not None
+        assert loaded1.all_key_points == ["第一版要点"]
+
+        # 第二次保存（更新）
+        doc2 = DocumentSummary(
+            source="600000_2024-12-31",
+            chapter_summaries=[],
+            all_key_points=["更新后的要点"],
+            all_key_data=[],
+            total_chunks_processed=2,
+            total_chapters=1,
+        )
+        await save_document_summary(doc2)
+
+        # 验证更新成功
+        loaded2 = await load_document_summary("600000", "2024-12-31")
+        assert loaded2 is not None
+        assert loaded2.all_key_points == ["更新后的要点"]
+        assert loaded2.total_chunks_processed == 2

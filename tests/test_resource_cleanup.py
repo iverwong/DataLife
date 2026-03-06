@@ -1,6 +1,6 @@
 """资源清理函数测试。
 
-验证 close_client() 和 close_db() 函数存在且工作正常。
+验证 dispose_engine() 函数存在且工作正常。
 以及检测线程泄露问题（P4）。
 """
 
@@ -46,49 +46,43 @@ class TestCloseClient:
         )
 
 
-class TestCloseDb:
-    """测试 core.db.close_db() 函数。"""
+class TestDisposeEngine:
+    """测试 core.db.dispose_engine() 函数。"""
 
-    def test_close_db_exists_and_works(self):
-        """验证 close_db 函数存在且调用后 db 被重置为 None。"""
-        import core.db as db_module
-
-        # 先调用一次 _get_db 确保连接存在
-        asyncio.get_event_loop().run_until_complete(db_module._get_db())
-
-        # 验证 db 不为 None
-        assert db_module.db is not None
+    def test_dispose_engine_exists_and_works(self):
+        """验证 dispose_engine 函数存在且调用后 engine 被重置为 None。"""
+        from core.db import engine as db_engine
 
         # 验证函数存在
-        assert hasattr(db_module, "close_db"), "close_db 函数不存在"
+        assert hasattr(db_engine, "dispose_engine"), "dispose_engine 函数不存在"
 
-        # 调用 close_db
-        asyncio.get_event_loop().run_until_complete(db_module.close_db())
+        # 调用 dispose_engine
+        asyncio.get_event_loop().run_until_complete(db_engine.dispose_engine())
 
-        # 验证 db 被重置为 None
-        assert db_module.db is None
+        # 验证 engine 被重置为 None
+        assert db_engine._engine is None
 
-    def test_close_db_idempotent(self):
-        """验证连续调用 close_db() 两次不会抛出异常。"""
-        import core.db as db_module
+    def test_dispose_engine_idempotent(self):
+        """验证连续调用 dispose_engine() 两次不会抛出异常。"""
+        from core.db import engine as db_engine
 
-        # 第一次调用（即使 db 已经是 None）
-        asyncio.get_event_loop().run_until_complete(db_module.close_db())
+        # 第一次调用
+        asyncio.get_event_loop().run_until_complete(db_engine.dispose_engine())
 
         # 第二次调用应该不抛出异常
-        asyncio.get_event_loop().run_until_complete(db_module.close_db())
+        asyncio.get_event_loop().run_until_complete(db_engine.dispose_engine())
 
 
 class TestThreadLeakDetection:
     """测试 P4: 检测 httpx.AsyncClient 导致的线程泄露。"""
 
     def test_no_dangling_threads_after_cleanup(self):
-        """验证 close_client() 和 close_db() 后不存在残留非 daemon 线程。
+        """验证 close_client() 和 dispose_engine() 后不存在残留非 daemon 线程。
 
         P4 问题：httpx.AsyncClient 在模块 import 时创建，测试结束后未关闭，
         导致测试进程挂起（非 daemon 线程阻止进程退出）。
         """
-        import core.db as db_module
+        from core.db import engine as db_engine
         from core.notion import client as notion_client_module
 
         # 记录清理前的非 daemon 线程
@@ -102,7 +96,7 @@ class TestThreadLeakDetection:
         asyncio.get_event_loop().run_until_complete(
             notion_client_module.close_client()
         )
-        asyncio.get_event_loop().run_until_complete(db_module.close_db())
+        asyncio.get_event_loop().run_until_complete(db_engine.dispose_engine())
 
         # 等待一小段时间让线程完成清理
         import time
