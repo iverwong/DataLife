@@ -3,11 +3,10 @@
 提供 JSON 序列化/反序列化支持，用于 ORM 模型中的 JSON 字段。
 """
 
-import json
 from dataclasses import asdict
 from typing import Generic, TypeVar
 
-from sqlalchemy import Text
+from sqlalchemy import JSON
 from sqlalchemy.types import TypeDecorator
 
 from core.data.models import ChunkMeta
@@ -19,77 +18,75 @@ T = TypeVar("T", bound=object)
 class JsonStringList(TypeDecorator):
     """JSON 序列化的字符串列表类型。
 
-    用于存储 Python list，在数据库中以 JSON 字符串形式保存。
+    用于存储 Python list，在数据库中以 JSON 形式保存。
     """
 
-    impl = Text
+    impl = JSON
     cache_ok = True
 
-    def process_bind_param(self, value: list[str] | None, dialect) -> str | None:
+    def process_bind_param(self, value: list[str] | None, dialect) -> list[str] | None:
         if value is None:
             return None
-        return json.dumps(value, ensure_ascii=False)
+        return value
 
-    def process_result_value(self, value: str | None, dialect) -> list[str] | None:
+    def process_result_value(self, value: list | None, dialect) -> list[str] | None:
         if value is None:
             return None
-        return json.loads(value)
+        return value
 
 
 class JsonChunkMetaList(TypeDecorator):
     """JSON 序列化的 ChunkMeta 列表类型。
 
-    用于存储 ChunkMeta 列表，在数据库中以 JSON 字符串形式保存。
+    用于存储 ChunkMeta 列表，在数据库中以 JSON 形式保存。
     反序列化时将 page_range 从 list 转换为 tuple。
     """
 
-    impl = Text
+    impl = JSON
     cache_ok = True
 
-    def process_bind_param(self, value: list[ChunkMeta] | None, dialect) -> str | None:
+    def process_bind_param(self, value: list[ChunkMeta] | None, dialect) -> list[dict] | None:
         if value is None:
             return None
-        return json.dumps([asdict(chunk) for chunk in value], ensure_ascii=False)
+        return [asdict(chunk) for chunk in value]
 
-    def process_result_value(self, value: str | None, dialect) -> list[ChunkMeta] | None:
+    def process_result_value(self, value: list | None, dialect) -> list[ChunkMeta] | None:
         if value is None:
             return None
-        data = json.loads(value)
         return [
             ChunkMeta(
                 title=item["title"],
                 level=item["level"],
                 page_range=tuple(item["page_range"]),
             )
-            for item in data
+            for item in value
         ]
 
 
 class JsonKeyDataItemList(TypeDecorator):
     """JSON 序列化的 KeyDataItem 列表类型。
 
-    用于存储 KeyDataItem 列表，在数据库中以 JSON 字符串形式保存。
+    用于存储 KeyDataItem 列表，在数据库中以 JSON 形式保存。
     """
 
-    impl = Text
+    impl = JSON
     cache_ok = True
 
-    def process_bind_param(self, value: list[KeyDataItem] | None, dialect) -> str | None:
+    def process_bind_param(self, value: list[KeyDataItem] | None, dialect) -> list[dict] | None:
         if value is None:
             return None
-        return json.dumps([item.model_dump() for item in value], ensure_ascii=False)
+        return [item.model_dump() for item in value]
 
-    def process_result_value(self, value: str | None, dialect) -> list[KeyDataItem] | None:
+    def process_result_value(self, value: list | None, dialect) -> list[KeyDataItem] | None:
         if value is None:
             return None
-        data = json.loads(value)
-        return [KeyDataItem.model_validate(item) for item in data]
+        return [KeyDataItem.model_validate(item) for item in value]
 
 
 class JsonPydanticModel(TypeDecorator, Generic[T]):
     """泛型 JSON 序列化的 Pydantic 模型类型。
 
-    用于存储任意 Pydantic BaseModel，在数据库中以 JSON 字符串形式保存。
+    用于存储任意 Pydantic BaseModel，在数据库中以 JSON 形式保存。
     序列化使用 model_dump()，反序列化使用 model_validate()。
 
     使用方式：
@@ -97,7 +94,7 @@ class JsonPydanticModel(TypeDecorator, Generic[T]):
     - 或使用 `JsonChunkSummaryOutput` 具体类
     """
 
-    impl = Text
+    impl = JSON
     cache_ok = True
     _model_class: type | None = None
 
@@ -126,17 +123,17 @@ class JsonPydanticModel(TypeDecorator, Generic[T]):
                             return args[0]
         raise ValueError(f"Cannot determine model class for {type(self)}")
 
-    def process_bind_param(self, value: T | None, dialect) -> str | None:
+    def process_bind_param(self, value: T | None, dialect) -> dict | None:
         if value is None:
             return None
-        return value.model_dump_json(ensure_ascii=False)
+        return value.model_dump()
 
-    def process_result_value(self, value: str | None, dialect) -> T | None:
+    def process_result_value(self, value: dict | None, dialect) -> T | None:
         if value is None:
             return None
         # 使用运行时获取的模型类进行验证
         model_class = self.model_class
-        return model_class.model_validate_json(value)
+        return model_class.model_validate(value)
 
 
 # 具体实现：ChunkSummaryOutput 类型
