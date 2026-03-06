@@ -6,14 +6,13 @@
 
 from __future__ import annotations
 
-
-import pymupdf
 import logfire
+import pymupdf
 
-from core.data.models import ParsedDocument, ChunkList
 from core.data.chapter_detector import detect_chapters
-from core.data.chunker import build_chunks
 from core.data.chunk_storage import save_chunks
+from core.data.chunker import build_chunks
+from core.data.models import ChunkList, ParsedDocument
 
 
 async def chunk_document(
@@ -50,17 +49,22 @@ async def chunk_document(
         doc = pymupdf.open(stream=content, filetype="pdf")
 
         # Step 2: 调用章节识别（多级降级）
-        logfire.debug("开始章节识别: source={source}, pages={page_count}",
-                      source=parsed.source, page_count=parsed.page_count)
+        logfire.debug(
+            "开始章节识别: source={source}, pages={page_count}",
+            source=parsed.source,
+            page_count=parsed.page_count,
+        )
         chapters = detect_chapters(doc, parsed)
-        logfire.info("章节识别完成: chapter_count={count}, source={source}",
-                     count=len(chapters), source=parsed.source)
+        logfire.info(
+            "章节识别完成: chapter_count={count}, source={source}",
+            count=len(chapters),
+            source=parsed.source,
+        )
 
         # Step 3: 调用分块引擎产出 ChunkList
         chunk_list = build_chunks(parsed, chapters, max_tokens=max_tokens)
         logfire.info(
-            "分块完成: source={source}, chunk_count={chunk_count}, "
-            "total_tokens={total_tokens}, chapter_count={chapter_count}",
+            "分块完成: source={source}, chunk_count={chunk_count}, total_tokens={total_tokens}, chapter_count={chapter_count}",
             source=parsed.source,
             chunk_count=len(chunk_list.chunks),
             total_tokens=chunk_list.total_tokens,
@@ -74,8 +78,11 @@ async def chunk_document(
                 stock_code=stock_code,
                 report_date=report_date,
             )
-            logfire.debug("分块结果已持久化: stock={stock}, date={date}",
-                          stock=stock_code, date=report_date)
+            logfire.debug(
+                "分块结果已持久化: stock={stock}, date={date}",
+                stock=stock_code,
+                date=report_date,
+            )
 
         return chunk_list
     finally:

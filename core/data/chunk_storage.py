@@ -13,12 +13,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
 import aiosqlite
 import logfire
 
 from core.data.models import Chunk, ChunkList, ChunkMeta, ChunkType
-
 
 # ── 常量 ──────────────────────────────────────────────────────────────
 DEFAULT_STORAGE_DIR: Path = Path("data/chunks")
@@ -42,7 +42,7 @@ async def init_chunk_tables(db_path: str | None = None) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
 
     async with aiosqlite.connect(path) as db:
-        await db.execute("""
+        _ = await db.execute("""
             CREATE TABLE IF NOT EXISTS chunk_meta (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 stock_code TEXT NOT NULL,
@@ -97,12 +97,14 @@ async def save_chunks(
 
     # 保存 Markdown 文件并准备元数据
     # tuple elements: (stock_code, report_date, chunk_index, chapter_title, chapter_path_json, contained_chapters_json, page_start, page_end, token_count, chunk_type, needs_prior_summary, md_file_path)
-    meta_records: list[tuple[str, str, int, str, str, str, int, int, int, str, int, str]] = []
+    meta_records: list[
+        tuple[str, str, int, str, str, str, int, int, int, str, int, str]
+    ] = []
 
     for i, chunk in enumerate(chunk_list.chunks):
         # 保存 Markdown 文件（使用序号 i 作为文件名，因为 chunk_index 可能重复）
         md_file_path = chunk_dir / f"{i}.md"
-        md_file_path.write_text(chunk.text, encoding="utf-8")
+        _ = md_file_path.write_text(chunk.text, encoding="utf-8")
 
         # 准备元数据记录
         chapter_path_json = json.dumps(chunk.chapter_path, ensure_ascii=False)
@@ -118,33 +120,35 @@ async def save_chunks(
             ],
             ensure_ascii=False,
         )
-        meta_records.append((
-            stock_code,
-            report_date,
-            chunk.chunk_index,
-            chunk.chapter_path[0] if chunk.chapter_path else "",
-            chapter_path_json,
-            contained_chapters_json,
-            chunk.page_range[0],
-            chunk.page_range[1],
-            chunk.token_count,
-            chunk.chunk_type.value,
-            1 if chunk.needs_prior_summary else 0,
-            str(md_file_path),
-        ))
+        meta_records.append(
+            (
+                stock_code,
+                report_date,
+                chunk.chunk_index,
+                chunk.chapter_path[0] if chunk.chapter_path else "",
+                chapter_path_json,
+                contained_chapters_json,
+                chunk.page_range[0],
+                chunk.page_range[1],
+                chunk.token_count,
+                chunk.chunk_type.value,
+                1 if chunk.needs_prior_summary else 0,
+                str(md_file_path),
+            )
+        )
 
     # 写入 SQLite
     await init_chunk_tables(db_path)
 
     async with aiosqlite.connect(db_path) as db:
         # 先删除已有的相同 stock_code + report_date 的记录
-        await db.execute(
+        _ = await db.execute(
             "DELETE FROM chunk_meta WHERE stock_code = ? AND report_date = ?",
             (stock_code, report_date),
         )
 
         # 批量插入新记录
-        await db.executemany(
+        _ = await db.executemany(
             """INSERT INTO chunk_meta
                (stock_code, report_date, chunk_index, chapter_title, chapter_path,
                 contained_chapters, page_start, page_end, token_count, chunk_type, needs_prior_summary, md_file_path)
@@ -203,7 +207,7 @@ async def load_chunks(
 
     for row in rows:
         # 读取 Markdown 文件
-        md_file_path = Path(row["md_file_path"])
+        md_file_path = Path(cast(str, row["md_file_path"]))
         if not md_file_path.exists():
             logfire.warning("Markdown 文件不存在: {path}", path=md_file_path)
             continue

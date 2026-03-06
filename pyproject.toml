@@ -1,7 +1,6 @@
 [tool.basedpyright]
 include = ["core"]
 pythonVersion = "3.13"
-stubPath = "./typings"
 
 [tool.ruff]
 include = ["core/**/*.py"]

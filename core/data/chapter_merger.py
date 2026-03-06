@@ -7,6 +7,7 @@
 - pydantic_ai：Agent 编排
 - core.data.summary_models：ChunkSummaryOutput, ChapterSummary
 """
+
 from __future__ import annotations
 
 import os
@@ -59,6 +60,7 @@ async def _run_merge_agent(
     api_key: str | None,
     temperature: float,
     max_tokens: int,
+    retries: int,
 ) -> ChunkSummaryOutput:
     """内部函数：调用 LLM 合并多个子块摘要。
 
@@ -95,9 +97,7 @@ async def _run_merge_agent(
             prompt_parts.append(f"关键数据：{', '.join(data_strs)}\n")
 
     prompt_parts.append(
-        "\n\n请生成统一的章节摘要，包含："
-        "chapter_title, chapter_path, key_points(3-5条), "
-        "detailed_summary(综合各子块内容), key_data(合并去重), "
+        "\n\n请生成统一的章节摘要，包含：chapter_title, chapter_path, key_points(3-5条), detailed_summary(综合各子块内容), key_data(合并去重), "
         + "context_brief(精简上下文供后续章节使用)"
     )
 
@@ -119,6 +119,7 @@ async def _run_merge_agent(
     agent = Agent(
         model_instance,
         output_type=ChunkSummaryOutput,
+        retries=retries,
     )
 
     logfire.debug(
@@ -186,6 +187,7 @@ async def merge_chapter_summaries(
             api_key=api_key,
             temperature=temperature,
             max_tokens=max_tokens,
+            retries=retries,
         )
         return ChapterSummary(
             chapter_title=merged.chapter_title,

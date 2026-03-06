@@ -16,7 +16,8 @@ from typing import override
 
 import pymupdf
 
-from core.data.models import ParsedDocument, ChapterBoundary
+from core.data.models import ChapterBoundary, ParsedDocument
+from core.types_.pymupdf import TocEntry
 
 
 class ChapterDetectionStrategy(ABC):
@@ -68,7 +69,7 @@ class BookmarkStrategy(ChapterDetectionStrategy):
         parsed: ParsedDocument,
     ) -> list[ChapterBoundary] | None:
         # 获取书签列表
-        toc = doc.get_toc()
+        toc: list[TocEntry] = doc.get_toc()  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
         if not toc:
             return None
 
@@ -78,9 +79,9 @@ class BookmarkStrategy(ChapterDetectionStrategy):
         for toc_entry in toc:
             # toc_entry 格式: [level, title, page_number, ...]
             # page_number 是 1-based
-            level = toc_entry[0]
-            title = toc_entry[1]
-            page_number = toc_entry[2]
+            level = toc_entry.lvl
+            title = toc_entry.title
+            page_number = toc_entry.page
 
             # 跳过无效页码
             if page_number < 1 or page_number > parsed.page_count:
@@ -92,7 +93,9 @@ class BookmarkStrategy(ChapterDetectionStrategy):
                 page_text = parsed.chunks[page_index].markdown_text
                 # 模糊匹配：去除空格后比较
                 normalized_title = title.replace(" ", "").replace("\u3000", "")
-                normalized_page = page_text.replace(" ", "").replace("\n", "").replace("\u3000", "")
+                normalized_page = (
+                    page_text.replace(" ", "").replace("\n", "").replace("\u3000", "")
+                )
 
                 if normalized_title not in normalized_page:
                     continue  # 验证失败，跳过此书签
@@ -197,7 +200,9 @@ class TocPageStrategy(ChapterDetectionStrategy):
             normalized_title = title.replace(" ", "").replace("\u3000", "")
             for pdf_page_idx in range(toc_page_idx, parsed.page_count):
                 page_text = parsed.chunks[pdf_page_idx].markdown_text
-                normalized_page = page_text.replace(" ", "").replace("\n", "").replace("\u3000", "")
+                normalized_page = (
+                    page_text.replace(" ", "").replace("\n", "").replace("\u3000", "")
+                )
                 if normalized_title in normalized_page:
                     # 计算偏移：印刷页码 vs PDF 页码
                     pdf_page = pdf_page_idx + 1
@@ -292,9 +297,17 @@ class HeadingStrategy(ChapterDetectionStrategy):
     )
 
     # 中文数字到阿拉伯数字的映射
-    _CN_DIGITS = {
-        "一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
-        "六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
+    _CN_DIGITS: dict[str, int] = {
+        "一": 1,
+        "二": 2,
+        "三": 3,
+        "四": 4,
+        "五": 5,
+        "六": 6,
+        "七": 7,
+        "八": 8,
+        "九": 9,
+        "十": 10,
     }
 
     @override
@@ -306,7 +319,7 @@ class HeadingStrategy(ChapterDetectionStrategy):
         boundaries: list[ChapterBoundary] = []
 
         # 遍历所有页面
-        for page_idx, page in enumerate(parsed.chunks):
+        for _, page in enumerate(parsed.chunks):
             page_text = page.markdown_text
             page_number = page.page_number
 
@@ -446,10 +459,12 @@ def detect_chapters(
             return result
 
     # FallbackStrategy 应该始终返回结果，这里是安全网
-    return [ChapterBoundary(
-        title="全文",
-        level=1,
-        start_page=1,
-        end_page=parsed.page_count,
-        source="fallback",
-    )]
+    return [
+        ChapterBoundary(
+            title="全文",
+            level=1,
+            start_page=1,
+            end_page=parsed.page_count,
+            source="fallback",
+        )
+    ]
