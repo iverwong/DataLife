@@ -1,8 +1,4 @@
 {
-  "statusLine": {
-    "type": "command",
-    "command": "python -c \"import json, sys; d=json.load(sys.stdin); cw=d.get('context_window',{}); total=cw.get('total_tokens',0); model=d.get('model',{}).get('display_name','Claude'); max_tokens=200000; pct=round(total/max_tokens*100,1) if max_tokens else 0; used_k=round(total/1024,1) if total else 0; color='\\\\033[32m' if pct<30 else '\\\\033[33m' if pct<50 else '\\\\033[38;5;208m' if pct<70 else '\\\\033[31m'; reset='\\\\033[0m'; print(f'{color}[{model}] {used_k}K/{max_tokens//1000}K({pct}%){reset}' if total else f'[{model}] Starting...')\""
-  },
   "permissions": {
     "allow": [
       "mcp__MiniMax__web_search",
