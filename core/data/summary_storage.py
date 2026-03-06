@@ -5,11 +5,29 @@
 """
 from __future__ import annotations
 
+import json
+from datetime import datetime
+
+from sqlalchemy import select
+
 from core.data.summary_models import (
     ChapterSummary,
     ChunkSummaryOutput,
     DocumentSummary,
+    KeyDataItem,
 )
+from core.db import get_session
+from core.db.models import (
+    ChapterSummaryRecord,
+    ChunkSummaryRecord,
+    DocumentSummaryRecord,
+)
+
+
+class SummaryStorageError(Exception):
+    """摘要存储异常。"""
+
+    pass
 
 
 async def save_chunk_summary(
@@ -31,7 +49,30 @@ async def save_chunk_summary(
     Raises:
         SummaryStorageError: 写入失败。
     """
-    raise NotImplementedError
+    try:
+        key_points_json = json.dumps(summary.key_points, ensure_ascii=False)
+        chapter_path_json = json.dumps(summary.chapter_path, ensure_ascii=False)
+        key_data_json = json.dumps(
+            [item.model_dump() for item in summary.key_data], ensure_ascii=False
+        ) if summary.key_data else None
+
+        record = ChunkSummaryRecord(
+            chunk_meta_id=chunk_meta_id,
+            chapter_title=summary.chapter_title,
+            chapter_path=chapter_path_json,
+            key_points=key_points_json,
+            detailed_summary=summary.detailed_summary,
+            key_data=key_data_json,
+            context_brief=summary.context_brief,
+            created_at=datetime.now().isoformat(),
+        )
+
+        async with get_session() as session:
+            session.add(record)
+            await session.flush()
+            return record.id
+    except Exception as e:
+        raise SummaryStorageError(f"保存 Chunk 摘要失败: {e}") from e
 
 
 async def save_chapter_summary(
@@ -54,7 +95,25 @@ async def save_chapter_summary(
     Raises:
         SummaryStorageError: 写入失败。
     """
-    raise NotImplementedError
+    try:
+        summary_json = json.dumps(chapter.summary.model_dump(), ensure_ascii=False)
+
+        record = ChapterSummaryRecord(
+            stock_code=stock_code,
+            report_date=report_date,
+            chapter_title=chapter.chapter_title,
+            chapter_path=json.dumps(chapter.chapter_path, ensure_ascii=False),
+            summary_json=summary_json,
+            chunk_count=chapter.chunk_count,
+            created_at=datetime.now().isoformat(),
+        )
+
+        async with get_session() as session:
+            session.add(record)
+            await session.flush()
+            return record.id
+    except Exception as e:
+        raise SummaryStorageError(f"保存章节摘要失败: {e}") from e
 
 
 async def save_document_summary(
@@ -78,7 +137,60 @@ async def save_document_summary(
     Raises:
         SummaryStorageError: 写入失败或 source 格式无效。
     """
-    raise NotImplementedError
+    try:
+        # 从 source 解析 stock_code 和 report_date
+        parts = doc_summary.source.split("_")
+        if len(parts) != 2:
+            raise SummaryStorageError(
+                f"无效的 source 格式: {doc_summary.source}，期望格式: 'stock_code_report_date'"
+            )
+        stock_code = parts[0]
+        report_date = parts[1]
+
+        # JSON 序列化
+        all_key_points_json = json.dumps(
+            doc_summary.all_key_points, ensure_ascii=False
+        )
+        all_key_data_json = json.dumps(
+            [item.model_dump() for item in doc_summary.all_key_data],
+            ensure_ascii=False,
+        ) if doc_summary.all_key_data else None
+
+        async with get_session() as session:
+            # 查询已存在记录
+            result = await session.execute(
+                select(DocumentSummaryRecord)
+                .where(DocumentSummaryRecord.stock_code == stock_code)
+                .where(DocumentSummaryRecord.report_date == report_date)
+            )
+            record = result.scalar_one_or_none()
+
+            if record is not None:
+                # 更新
+                record.total_chapters = doc_summary.total_chapters
+                record.total_chunks_processed = doc_summary.total_chunks_processed
+                record.all_key_points = all_key_points_json
+                record.all_key_data = all_key_data_json
+                record.created_at = datetime.now().isoformat()
+            else:
+                # 插入
+                record = DocumentSummaryRecord(
+                    stock_code=stock_code,
+                    report_date=report_date,
+                    total_chapters=doc_summary.total_chapters,
+                    total_chunks_processed=doc_summary.total_chunks_processed,
+                    all_key_points=all_key_points_json,
+                    all_key_data=all_key_data_json,
+                    created_at=datetime.now().isoformat(),
+                )
+                session.add(record)
+
+            await session.flush()
+            return record.id
+    except SummaryStorageError:
+        raise
+    except Exception as e:
+        raise SummaryStorageError(f"保存文档摘要失败: {e}") from e
 
 
 async def load_document_summary(
@@ -100,4 +212,37 @@ async def load_document_summary(
     Raises:
         SummaryStorageError: 读取失败。
     """
-    raise NotImplementedError
+    try:
+        async with get_session() as session:
+            result = await session.execute(
+                select(DocumentSummaryRecord)
+                .where(DocumentSummaryRecord.stock_code == stock_code)
+                .where(DocumentSummaryRecord.report_date == report_date)
+            )
+            record = result.scalar_one_or_none()
+
+            if record is None:
+                return None
+
+            # 反序列化 JSON 字段
+            key_points = (
+                json.loads(record.all_key_points)
+                if record.all_key_points
+                else []
+            )
+            key_data = (
+                [KeyDataItem(**item) for item in json.loads(record.all_key_data)]
+                if record.all_key_data
+                else []
+            )
+
+            return DocumentSummary(
+                source=f"{record.stock_code}_{record.report_date}",
+                chapter_summaries=[],  # 加载时不返回 chapter_summaries
+                all_key_points=key_points,
+                all_key_data=key_data,
+                total_chunks_processed=record.total_chunks_processed,
+                total_chapters=record.total_chapters,
+            )
+    except Exception as e:
+        raise SummaryStorageError(f"加载文档摘要失败: {e}") from e
