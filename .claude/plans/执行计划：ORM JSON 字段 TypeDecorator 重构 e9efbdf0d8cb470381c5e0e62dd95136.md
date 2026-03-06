@@ -28,26 +28,26 @@ ID: 48
 
 ### 问题清单
 
-| 编号 | ORM 模型 | 字段名 | 当前声明类型 | 实际语义类型 | 涉及 storage 文件 |
-| --- | --- | --- | --- | --- | --- |
-| F1 | ChunkMetaRecord | chapter_path | Mapped[str | None] | list[str] | None | chunk_[storage.py](http://storage.py) |
-| F2 | ChunkMetaRecord | contained_chapters | Mapped[str | None] | list[ChunkMeta] | None | chunk_[storage.py](http://storage.py) |
-| F3 | ChunkSummaryRecord | chapter_path | Mapped[str] | list[str] | summary_[storage.py](http://storage.py) |
-| F4 | ChunkSummaryRecord | key_points | Mapped[str] | list[str] | summary_[storage.py](http://storage.py) |
-| F5 | ChunkSummaryRecord | key_data | Mapped[str | None] | list[KeyDataItem] | None | summary_[storage.py](http://storage.py) |
-| F6 | ChapterSummaryRecord | chapter_path | Mapped[str] | list[str] | summary_[storage.py](http://storage.py) |
-| F7 | ChapterSummaryRecord | summary_json | Mapped[str] | ChunkSummaryOutput | summary_[storage.py](http://storage.py) |
-| F8 | DocumentSummaryRecord | all_key_points | Mapped[str] | list[str] | summary_[storage.py](http://storage.py) |
-| F9 | DocumentSummaryRecord | all_key_data | Mapped[str | None] | list[KeyDataItem] | None | summary_[storage.py](http://storage.py) |
+| 编号 | ORM 模型              | 字段名             | 当前声明类型 | 实际语义类型       | 涉及 storage 文件  |
+| ---- | --------------------- | ------------------ | ------------ | ------------------ | ------------------ |
+| F1   | ChunkMetaRecord       | chapter_path       | Mapped[str   | None]              | list[str]          | None | chunk_storage.py   |
+| F2   | ChunkMetaRecord       | contained_chapters | Mapped[str   | None]              | list[ChunkMeta]    | None | chunk_storage.py   |
+| F3   | ChunkSummaryRecord    | chapter_path       | Mapped[str]  | list[str]          | summary_storage.py |
+| F4   | ChunkSummaryRecord    | key_points         | Mapped[str]  | list[str]          | summary_storage.py |
+| F5   | ChunkSummaryRecord    | key_data           | Mapped[str   | None]              | list[KeyDataItem]  | None | summary_storage.py |
+| F6   | ChapterSummaryRecord  | chapter_path       | Mapped[str]  | list[str]          | summary_storage.py |
+| F7   | ChapterSummaryRecord  | summary_json       | Mapped[str]  | ChunkSummaryOutput | summary_storage.py |
+| F8   | DocumentSummaryRecord | all_key_points     | Mapped[str]  | list[str]          | summary_storage.py |
+| F9   | DocumentSummaryRecord | all_key_data       | Mapped[str   | None]              | list[KeyDataItem]  | None | summary_storage.py |
 
 ### 需要新增的 TypeDecorator
 
-| TypeDecorator 名称 | Python 类型 | 序列化策略 | 覆盖字段 |
-| --- | --- | --- | --- |
-| JsonStringList | list[str] | json.dumps / json.loads | F1, F3, F4, F6, F8 |
-| JsonChunkMetaList | list[ChunkMeta] | dataclass dict ↔ ChunkMeta 构造 | F2 |
-| JsonKeyDataItemList | list[KeyDataItem] | Pydantic model_dump / model_validate | F5, F9 |
-| JsonPydanticModel[ChunkSummaryOutput] | ChunkSummaryOutput | Pydantic model_dump / model_validate | F7 |
+| TypeDecorator 名称                    | Python 类型        | 序列化策略                           | 覆盖字段           |
+| ------------------------------------- | ------------------ | ------------------------------------ | ------------------ |
+| JsonStringList                        | list[str]          | json.dumps / json.loads              | F1, F3, F4, F6, F8 |
+| JsonChunkMetaList                     | list[ChunkMeta]    | dataclass dict ↔ ChunkMeta 构造      | F2                 |
+| JsonKeyDataItemList                   | list[KeyDataItem]  | Pydantic model_dump / model_validate | F5, F9             |
+| JsonPydanticModel[ChunkSummaryOutput] | ChunkSummaryOutput | Pydantic model_dump / model_validate | F7                 |
 
 ### 影响范围与风险评估
 
@@ -216,7 +216,7 @@ git commit -m "refactor: replace type - change ORM JSON fields to TypeDecorator 
 
 </aside>
 
-### 步骤 8 — 清理 chunk_[storage.py](http://storage.py) 的手动序列化代码
+### 步骤 8 — 清理 chunk_storage.py 的手动序列化代码
 
 - **操作类型**：重构操作
 - **重构手法**：内联函数 / 移除冗余代码（Remove Dead Code）
@@ -227,7 +227,7 @@ git commit -m "refactor: replace type - change ORM JSON fields to TypeDecorator 
     - 移除 `import json`
 - `depends_on: [6]`（与步骤 7 的提交可合并）
 
-### 步骤 9 — 清理 summary_[storage.py](http://storage.py) 的手动序列化代码
+### 步骤 9 — 清理 summary_storage.py 的手动序列化代码
 
 - **操作类型**：重构操作
 - **重构手法**：内联函数 / 移除冗余代码（Remove Dead Code）
