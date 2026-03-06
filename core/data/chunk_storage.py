@@ -11,7 +11,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from sqlalchemy import delete, select
@@ -85,18 +84,14 @@ async def save_chunks(
             _ = md_path.write_text(chunk.text, encoding="utf-8")
 
             # 构建 ORM 对象
+            # 注意：chapter_path 和 contained_chapters 现在由 TypeDecorator 自动序列化
             record = ChunkMetaRecord(
                 stock_code=stock_code,
                 report_date=report_date,
                 chunk_index=idx,
                 chapter_title=chunk.chapter_path[-1] if chunk.chapter_path else None,
-                chapter_path=json.dumps(chunk.chapter_path, ensure_ascii=False),
-                contained_chapters=json.dumps(
-                    [c.__dict__ for c in chunk.contained_chapters],
-                    ensure_ascii=False,
-                )
-                if chunk.contained_chapters
-                else None,
+                chapter_path=chunk.chapter_path,
+                contained_chapters=chunk.contained_chapters or None,
                 page_start=chunk.page_range[0],
                 page_end=chunk.page_range[1],
                 token_count=chunk.token_count,
@@ -166,20 +161,10 @@ async def load_chunks(stock_code: str, report_date: str) -> ChunkList | None:
                 md_path = Path(row.md_file_path)
                 text = md_path.read_text(encoding="utf-8")
 
-                chapter_path: list[str] = (
-                    json.loads(row.chapter_path) if row.chapter_path else []
-                )
-
-                contained_chapters: list[ChunkMeta] = []
-                if row.contained_chapters:
-                    for c in json.loads(row.contained_chapters):
-                        contained_chapters.append(
-                            ChunkMeta(
-                                title=c["title"],
-                                level=c["level"],
-                                page_range=c["page_range"],
-                            )
-                        )
+                # 注意：chapter_path 和 contained_chapters 现在由 TypeDecorator 自动反序列化
+                # 直接使用 row 字段即可获得正确的 Python 对象
+                chapter_path: list[str] = row.chapter_path or []
+                contained_chapters: list[ChunkMeta] = row.contained_chapters or []
 
                 chunks.append(
                     Chunk(

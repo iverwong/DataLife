@@ -79,9 +79,9 @@ class BookmarkStrategy(ChapterDetectionStrategy):
         for toc_entry in toc:
             # toc_entry 格式: [level, title, page_number, ...]
             # page_number 是 1-based
-            level = toc_entry.lvl
-            title = toc_entry.title
-            page_number = toc_entry.page
+            level = toc_entry[0]
+            title = toc_entry[1]
+            page_number = toc_entry[2]
 
             # 跳过无效页码
             if page_number < 1 or page_number > parsed.page_count:

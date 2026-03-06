@@ -5,7 +5,6 @@
 """
 from __future__ import annotations
 
-import json
 from datetime import datetime
 
 from sqlalchemy import select
@@ -14,7 +13,6 @@ from core.data.summary_models import (
     ChapterSummary,
     ChunkSummaryOutput,
     DocumentSummary,
-    KeyDataItem,
 )
 from core.db import get_session
 from core.db.models import (
@@ -50,19 +48,14 @@ async def save_chunk_summary(
         SummaryStorageError: 写入失败。
     """
     try:
-        key_points_json = json.dumps(summary.key_points, ensure_ascii=False)
-        chapter_path_json = json.dumps(summary.chapter_path, ensure_ascii=False)
-        key_data_json = json.dumps(
-            [item.model_dump() for item in summary.key_data], ensure_ascii=False
-        ) if summary.key_data else None
-
+        # 注意：chapter_path, key_points, key_data 现在由 TypeDecorator 自动序列化
         record = ChunkSummaryRecord(
             chunk_meta_id=chunk_meta_id,
             chapter_title=summary.chapter_title,
-            chapter_path=chapter_path_json,
-            key_points=key_points_json,
+            chapter_path=summary.chapter_path,
+            key_points=summary.key_points,
             detailed_summary=summary.detailed_summary,
-            key_data=key_data_json,
+            key_data=summary.key_data or None,
             context_brief=summary.context_brief,
             created_at=datetime.now().isoformat(),
         )
@@ -96,14 +89,13 @@ async def save_chapter_summary(
         SummaryStorageError: 写入失败。
     """
     try:
-        summary_json = json.dumps(chapter.summary.model_dump(), ensure_ascii=False)
-
+        # 注意：chapter_path 和 summary 现在由 TypeDecorator 自动序列化
         record = ChapterSummaryRecord(
             stock_code=stock_code,
             report_date=report_date,
             chapter_title=chapter.chapter_title,
-            chapter_path=json.dumps(chapter.chapter_path, ensure_ascii=False),
-            summary_json=summary_json,
+            chapter_path=chapter.chapter_path,
+            summary_json=chapter.summary,
             chunk_count=chapter.chunk_count,
             created_at=datetime.now().isoformat(),
         )
@@ -147,14 +139,7 @@ async def save_document_summary(
         stock_code = parts[0]
         report_date = parts[1]
 
-        # JSON 序列化
-        all_key_points_json = json.dumps(
-            doc_summary.all_key_points, ensure_ascii=False
-        )
-        all_key_data_json = json.dumps(
-            [item.model_dump() for item in doc_summary.all_key_data],
-            ensure_ascii=False,
-        ) if doc_summary.all_key_data else None
+        # 注意：all_key_points 和 all_key_data 现在由 TypeDecorator 自动序列化
 
         async with get_session() as session:
             # 查询已存在记录
@@ -169,8 +154,8 @@ async def save_document_summary(
                 # 更新
                 record.total_chapters = doc_summary.total_chapters
                 record.total_chunks_processed = doc_summary.total_chunks_processed
-                record.all_key_points = all_key_points_json
-                record.all_key_data = all_key_data_json
+                record.all_key_points = doc_summary.all_key_points
+                record.all_key_data = doc_summary.all_key_data or None
                 record.created_at = datetime.now().isoformat()
             else:
                 # 插入
@@ -179,8 +164,8 @@ async def save_document_summary(
                     report_date=report_date,
                     total_chapters=doc_summary.total_chapters,
                     total_chunks_processed=doc_summary.total_chunks_processed,
-                    all_key_points=all_key_points_json,
-                    all_key_data=all_key_data_json,
+                    all_key_points=doc_summary.all_key_points,
+                    all_key_data=doc_summary.all_key_data or None,
                     created_at=datetime.now().isoformat(),
                 )
                 session.add(record)
@@ -224,23 +209,13 @@ async def load_document_summary(
             if record is None:
                 return None
 
-            # 反序列化 JSON 字段
-            key_points = (
-                json.loads(record.all_key_points)
-                if record.all_key_points
-                else []
-            )
-            key_data = (
-                [KeyDataItem(**item) for item in json.loads(record.all_key_data)]
-                if record.all_key_data
-                else []
-            )
-
+            # 注意：all_key_points 和 all_key_data 现在由 TypeDecorator 自动反序列化
+            # 直接使用 record 字段即可获得正确的 Python 对象
             return DocumentSummary(
                 source=f"{record.stock_code}_{record.report_date}",
                 chapter_summaries=[],  # 加载时不返回 chapter_summaries
-                all_key_points=key_points,
-                all_key_data=key_data,
+                all_key_points=record.all_key_points or [],
+                all_key_data=record.all_key_data or [],
                 total_chunks_processed=record.total_chunks_processed,
                 total_chapters=record.total_chapters,
             )
