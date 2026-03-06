@@ -8,14 +8,15 @@
 - 只负责存储和读取分块结果
 - 不负责分块逻辑
 """
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from sqlalchemy import select, delete
+from sqlalchemy import delete, select
 
-from core.data.models import ChunkList, Chunk, ChunkType, ChunkMeta
+from core.data.models import Chunk, ChunkList, ChunkMeta, ChunkType
 from core.db.engine import get_session
 from core.db.models import ChunkMetaRecord
 
@@ -33,7 +34,7 @@ async def save_chunks(
     """将 ChunkList 持久化到本地存储。
 
     同时写入：
-    1. SQLite ORM 元信息（ChunkMetaRecord，通过 get_session()）
+    1. ORM 元信息（ChunkMetaRecord，通过 get_session()）
     2. 文件系统 Markdown 分段（按 stock_code/report_date/chunk_index.md）
 
     流程：
@@ -81,7 +82,7 @@ async def save_chunks(
         for idx, chunk in enumerate(chunk_list.chunks):
             # 写入 Markdown 文件
             md_path = stock_dir / f"{idx}.md"
-            md_path.write_text(chunk.text, encoding="utf-8")
+            _ = md_path.write_text(chunk.text, encoding="utf-8")
 
             # 构建 ORM 对象
             record = ChunkMetaRecord(
@@ -108,21 +109,16 @@ async def save_chunks(
     # 3-5. 通过 get_session() 获取 session，删除旧记录，批量添加新记录
     async with get_session() as session:
         # 删除已有的相同 (stock_code, report_date) 记录
-        await session.execute(
-            delete(ChunkMetaRecord).where(
-                ChunkMetaRecord.stock_code == stock_code
-            ).where(ChunkMetaRecord.report_date == report_date)
+        _ = await session.execute(
+            delete(ChunkMetaRecord)
+            .where(ChunkMetaRecord.stock_code == stock_code)
+            .where(ChunkMetaRecord.report_date == report_date)
         )
         # 批量 add 新记录
         session.add_all(records)
 
 
-async def load_chunks(
-    stock_code: str,
-    report_date: str,
-    *,
-    storage_dir: Path = DEFAULT_STORAGE_DIR,
-) -> ChunkList | None:
+async def load_chunks(stock_code: str, report_date: str) -> ChunkList | None:
     """从本地存储加载 ChunkList。
 
     流程：
@@ -170,7 +166,7 @@ async def load_chunks(
                 md_path = Path(row.md_file_path)
                 text = md_path.read_text(encoding="utf-8")
 
-                chapter_path = (
+                chapter_path: list[str] = (
                     json.loads(row.chapter_path) if row.chapter_path else []
                 )
 
