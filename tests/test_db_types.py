@@ -18,7 +18,6 @@ class TestJsonStringList:
     """测试 JsonStringList TypeDecorator。"""
 
     @pytest.mark.unit
-    @pytest.mark.skip(reason="TypeDecorator not implemented yet")
     @pytest.mark.parametrize(
         "input_value,expected",
         [
@@ -46,7 +45,6 @@ class TestJsonChunkMetaList:
     """测试 JsonChunkMetaList TypeDecorator。"""
 
     @pytest.mark.unit
-    @pytest.mark.skip(reason="TypeDecorator not implemented yet")
     @pytest.mark.parametrize(
         "input_value,expected",
         [
@@ -93,7 +91,6 @@ class TestJsonChunkMetaList:
                 assert isinstance(item.page_range, tuple)
 
     @pytest.mark.unit
-    @pytest.mark.skip(reason="TypeDecorator not implemented yet")
     def test_page_range_type_conversion(self) -> None:
         """测试 page_range 从 list 到 tuple 的类型转换。"""
         from core.db.types import JsonChunkMetaList
@@ -118,7 +115,6 @@ class TestJsonKeyDataItemList:
     """测试 JsonKeyDataItemList TypeDecorator。"""
 
     @pytest.mark.unit
-    @pytest.mark.skip(reason="TypeDecorator not implemented yet")
     @pytest.mark.parametrize(
         "input_value,expected",
         [
@@ -182,7 +178,6 @@ class TestJsonKeyDataItemList:
         assert result == expected
 
     @pytest.mark.unit
-    @pytest.mark.skip(reason="TypeDecorator not implemented yet")
     def test_nested_period_info(self) -> None:
         """测试嵌套 PeriodInfo 对象的序列化与反序列化。"""
         from core.db.types import JsonKeyDataItemList
@@ -219,7 +214,6 @@ class TestJsonPydanticModel:
     """测试 JsonPydanticModel TypeDecorator。"""
 
     @pytest.mark.unit
-    @pytest.mark.skip(reason="TypeDecorator not implemented yet")
     @pytest.mark.parametrize(
         "input_value,expected",
         [
@@ -295,7 +289,6 @@ class TestJsonPydanticModel:
         assert result == expected
 
     @pytest.mark.unit
-    @pytest.mark.skip(reason="TypeDecorator not implemented yet")
     def test_nested_key_data(self) -> None:
         """测试 ChunkSummaryOutput 中嵌套的 key_data 字段。"""
         from core.db.types import JsonPydanticModel

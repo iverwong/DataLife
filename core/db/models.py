@@ -21,6 +21,15 @@ from sqlalchemy.orm import (
     relationship,
 )
 
+from core.data.models import ChunkMeta
+from core.data.summary_models import ChunkSummaryOutput, KeyDataItem
+from core.db.types import (
+    JsonChunkMetaList,
+    JsonChunkSummaryOutput,
+    JsonKeyDataItemList,
+    JsonStringList,
+)
+
 
 class Base(AsyncAttrs, DeclarativeBase):
     """所有 ORM 模型的基类。"""
@@ -72,8 +81,8 @@ class ChunkMetaRecord(Base):
     report_date: Mapped[str] = mapped_column(String, nullable=False)
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     chapter_title: Mapped[str | None] = mapped_column(Text)
-    chapter_path: Mapped[str | None] = mapped_column(Text)
-    contained_chapters: Mapped[str | None] = mapped_column(Text)
+    chapter_path: Mapped[list[str] | None] = mapped_column(JsonStringList)
+    contained_chapters: Mapped[list[ChunkMeta] | None] = mapped_column(JsonChunkMetaList)
     page_start: Mapped[int] = mapped_column(Integer, nullable=False)
     page_end: Mapped[int] = mapped_column(Integer, nullable=False)
     token_count: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -103,10 +112,10 @@ class ChunkSummaryRecord(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     chunk_meta_id: Mapped[int] = mapped_column(ForeignKey("chunk_meta.id", ondelete="CASCADE"), nullable=False)
     chapter_title: Mapped[str] = mapped_column(Text, nullable=False)
-    chapter_path: Mapped[str] = mapped_column(Text, nullable=False)
-    key_points: Mapped[str] = mapped_column(Text, nullable=False)
+    chapter_path: Mapped[list[str]] = mapped_column(JsonStringList, nullable=False)
+    key_points: Mapped[list[str]] = mapped_column(JsonStringList, nullable=False)
     detailed_summary: Mapped[str] = mapped_column(Text, nullable=False)
-    key_data: Mapped[str | None] = mapped_column(Text)
+    key_data: Mapped[list[KeyDataItem] | None] = mapped_column(JsonKeyDataItemList)
     context_brief: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -127,8 +136,8 @@ class ChapterSummaryRecord(Base):
     stock_code: Mapped[str] = mapped_column(Text, nullable=False)
     report_date: Mapped[str] = mapped_column(Text, nullable=False)
     chapter_title: Mapped[str] = mapped_column(Text, nullable=False)
-    chapter_path: Mapped[str] = mapped_column(Text, nullable=False)
-    summary_json: Mapped[str] = mapped_column(Text, nullable=False)
+    chapter_path: Mapped[list[str]] = mapped_column(JsonStringList, nullable=False)
+    summary_json: Mapped[ChunkSummaryOutput] = mapped_column(JsonChunkSummaryOutput, nullable=False)
     chunk_count: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -148,6 +157,6 @@ class DocumentSummaryRecord(Base):
     report_date: Mapped[str] = mapped_column(Text, nullable=False)
     total_chapters: Mapped[int] = mapped_column(Integer, nullable=False)
     total_chunks_processed: Mapped[int] = mapped_column(Integer, nullable=False)
-    all_key_points: Mapped[str] = mapped_column(Text, nullable=False)
-    all_key_data: Mapped[str | None] = mapped_column(Text)
+    all_key_points: Mapped[list[str]] = mapped_column(JsonStringList, nullable=False)
+    all_key_data: Mapped[list[KeyDataItem] | None] = mapped_column(JsonKeyDataItemList)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
