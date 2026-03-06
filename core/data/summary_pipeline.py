@@ -7,12 +7,11 @@
 - core.data.summary_models：DocumentSummary
 - core.data.chunk_summarizer：summarize_chunk, build_summarize_context
 - core.data.chapter_merger：merge_chapter_summaries, build_single_chunk_chapter
-- core.data.summary_storage：save_*, init_summary_tables
+- core.data.summary_storage：save_*
 """
 from __future__ import annotations
 
 from collections import defaultdict
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import logfire
@@ -26,16 +25,12 @@ from core.data.summary_models import (
     KeyDataItem,
 )
 from core.data.summary_storage import (
-    init_summary_tables,
     save_chapter_summary,
     save_document_summary,
 )
 
 if TYPE_CHECKING:
     from core.data.models import ChunkList
-
-# ── 常量 ──────────────────────────────────────────────
-DEFAULT_DB_PATH: Path = Path("data/datalife.db")
 
 
 async def summarize_document(
@@ -49,7 +44,6 @@ async def summarize_document(
     max_tokens: int = 4096,
     retries: int = 3,
     persist: bool = True,
-    db_path: Path = DEFAULT_DB_PATH,
 ) -> "DocumentSummary":
     """端到端文档摘要编排。
 
@@ -77,7 +71,6 @@ async def summarize_document(
         max_tokens: 最大输出 token
         retries: 重试次数
         persist: 是否持久化到 SQLite
-        db_path: 数据库路径
 
     Returns:
         DocumentSummary：完整文档结构化摘要
@@ -209,19 +202,16 @@ async def summarize_document(
 
     # 6. 持久化（如需要）
     if persist:
-        await init_summary_tables(db_path=db_path)
-
         # 保存章节摘要
         for chapter_summary in chapter_summaries:
             await save_chapter_summary(
                 chapter_summary,
                 stock_code=stock_code,
                 report_date=report_date,
-                db_path=db_path,
             )
 
         # 保存文档摘要
-        await save_document_summary(doc_summary, db_path=db_path)
+        await save_document_summary(doc_summary)
 
         logfire.debug(
             "Document summary persisted: stock={stock}, date={date}",

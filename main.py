@@ -17,7 +17,7 @@ _ = load_dotenv()
 
 import asyncio
 
-from core.db import close_db, init_db
+from core.db import dispose_engine, init_db
 from core.notion import get_stock_pool
 
 
@@ -41,7 +41,7 @@ async def main() -> None:
         from core.notion.client import close_client
 
         await close_client()
-        await close_db()
+        await dispose_engine()
 
 
 if __name__ == "__main__":
