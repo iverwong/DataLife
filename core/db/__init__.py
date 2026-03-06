@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import datetime
+from typing import cast
 
 import xxhash
 from sqlalchemy import select
@@ -173,7 +174,8 @@ async def get_update_time(
             session.add_all(new_records)
 
         # 构建返回结果
-        return {s: existing_records.get(s) for s in stocks}
+        result = {s: existing_records.get(s) for s in stocks}
+        return cast(dict[str, NotionDate | None], result)
 
 
 async def set_update_time(
