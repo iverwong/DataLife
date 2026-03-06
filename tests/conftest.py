@@ -59,6 +59,15 @@ async def test_engine():
     await dispose_engine()
 
 
+@pytest.fixture
+async def in_memory_db(test_engine):
+    """测试用内存数据库 fixture（test_engine 的别名）。
+
+    保留此名称以兼容旧测试代码。
+    """
+    return test_engine
+
+
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     """pytest 会话结束钩子：在所有测试和 fixture 清理后执行。
 

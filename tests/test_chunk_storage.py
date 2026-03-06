@@ -73,7 +73,6 @@ class TestChunkStorage:
         )
         loaded = await load_chunks(
             "300274", "2024-annual",
-            storage_dir=storage_dir,
         )
         assert loaded is not None
         assert len(loaded.chunks) == 2
@@ -83,10 +82,8 @@ class TestChunkStorage:
     @pytest.mark.asyncio
     async def test_load_nonexistent(self, test_engine, tmp_path):
         """加载不存在的记录应返回 None。"""
-        storage_dir = tmp_path / "chunks"
         result = await load_chunks(
             "999999", "2099-annual",
-            storage_dir=storage_dir,
         )
         assert result is None
 
@@ -128,7 +125,6 @@ class TestChunkStorage:
         # 加载应返回第二次保存的内容
         loaded = await load_chunks(
             "300274", "2024-annual",
-            storage_dir=storage_dir,
         )
         assert loaded is not None
         assert loaded.chunks[0].text == "# 新第一章\n新正文"
@@ -148,7 +144,6 @@ class TestChunkStorage:
 
         loaded = await load_chunks(
             "300274", "2024-annual",
-            storage_dir=storage_dir,
         )
 
         assert loaded is not None
@@ -193,12 +188,12 @@ class TestChunkStorage:
         )
 
         # 加载股票 A
-        loaded_a = await load_chunks("300274", "2024-annual", storage_dir=storage_dir)
+        loaded_a = await load_chunks("300274", "2024-annual")
         assert loaded_a is not None
         assert loaded_a.chunks[0].text == "# 第一章\n正文内容"
 
         # 加载股票 B
-        loaded_b = await load_chunks("600000", "2024-annual", storage_dir=storage_dir)
+        loaded_b = await load_chunks("600000", "2024-annual")
         assert loaded_b is not None
         assert loaded_b.chunks[0].text == "# 股票 B 章节\n内容"
 
@@ -215,7 +210,7 @@ class TestChunkStorage:
             storage_dir=storage_dir,
         )
 
-        loaded = await load_chunks("300274", "2024-annual", storage_dir=storage_dir)
+        loaded = await load_chunks("300274", "2024-annual")
         assert loaded is not None
         assert len(loaded.chunks) == 0
         assert loaded.total_tokens == 0

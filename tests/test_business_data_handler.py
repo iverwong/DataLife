@@ -472,7 +472,7 @@ class TestProcessBusinessDataForStockList:
 @pytest.mark.integration
 @pytest.mark.slow
 @pytest.mark.real_network
-async def test_integration_real_flow(test_env):
+async def test_integration_real_flow(test_env, test_engine):
     """测试真实完整流程（使用.dev.env配置）.
 
     测试条件：
