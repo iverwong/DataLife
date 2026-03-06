@@ -21,17 +21,21 @@ class TestCheckHash:
     @pytest.mark.asyncio
     async def test_check_hash_filters_existing(self, test_engine):
         """插入已有哈希后调用 check_hash，验证仅返回不存在的项。"""
-        # 先保存一些哈希
-        existing_hashes = ["hash1", "hash2", "hash3"]
+        # 先保存 content1-3 的哈希
+        existing_hashes = [
+            HashContent(data_type="test", content="content1"),
+            HashContent(data_type="test", content="content2"),
+            HashContent(data_type="test", content="content3"),
+        ]
         await save_hash(existing_hashes)
 
         # 创建包含已存在和不存在哈希的列表
         data_list = [
-            HashContent(data_type="test", content="content1"),  # hash1
-            HashContent(data_type="test", content="content2"),  # hash2
-            HashContent(data_type="test", content="content3"),  # hash3
-            HashContent(data_type="test", content="content4"),  # 不存在
-            HashContent(data_type="test", content="content5"),  # 不存在
+            HashContent(data_type="test", content="content1"),
+            HashContent(data_type="test", content="content2"),
+            HashContent(data_type="test", content="content3"),
+            HashContent(data_type="test", content="content4"),
+            HashContent(data_type="test", content="content5"),
         ]
 
         # 应该只返回不存在的项（content4 和 content5）

@@ -5,7 +5,12 @@
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from datetime import datetime
+
+import xxhash
+from sqlalchemy import select
 
 from core.db.engine import (
     configure_for_testing,
@@ -67,18 +72,69 @@ async def check_hash(data_list: list[HashContent]) -> list[HashContentWithHash]:
     Returns:
         仅包含数据库中尚未存在的数据项（附计算后的哈希值）。
     """
-    raise NotImplementedError
+    if not data_list:
+        return []
+
+    # 计算每个 item 的哈希值
+    hash_contents: list[HashContentWithHash] = []
+    for item in data_list:
+        content = json.dumps(
+            {"data_type": item.data_type, "content": item.content},
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        hash_value = xxhash.xxh3_64_hexdigest(content.encode())
+        hash_contents.append(
+            HashContentWithHash(
+                data_type=item.data_type,
+                content=item.content,
+                hash_value=hash_value,
+            )
+        )
+
+    # 批量查询已存在的哈希
+    hash_values = [h.hash_value for h in hash_contents]
+    async with get_session() as session:
+        result = await session.execute(
+            select(HashRecord.hash).where(HashRecord.hash.in_(hash_values))
+        )
+        existing_hashes = {row for row in result.scalars().all()}
+
+    # 过滤出不存在的数据项
+    return [h for h in hash_contents if h.hash_value not in existing_hashes]
 
 
-async def save_hash(data_list: list[str]) -> None:
+async def save_hash(data_list: list[str | HashContent]) -> None:
     """将哈希值批量保存到数据库中。
 
     使用 session.add_all() 批量插入 HashRecord。
 
     Args:
-        data_list: 待保存的哈希值字符串列表。
+        data_list: 待保存的哈希内容列表，可以是字符串哈希值或 HashContent 对象。
     """
-    raise NotImplementedError
+    if not data_list:
+        return
+
+    hash_values: list[str] = []
+    for h in data_list:
+        if isinstance(h, str):
+            hash_values.append(h)
+        else:
+            # HashContent 对象，计算哈希值
+            content = json.dumps(
+                {"data_type": h.data_type, "content": h.content},
+                sort_keys=True,
+                ensure_ascii=False,
+            )
+            hash_value = xxhash.xxh3_64_hexdigest(content.encode())
+            hash_values.append(hash_value)
+
+    records = [
+        HashRecord(hash=h, create_at=datetime.now().isoformat())
+        for h in hash_values
+    ]
+    async with get_session() as session:
+        session.add_all(records)
 
 
 async def get_update_time(
@@ -95,7 +151,29 @@ async def get_update_time(
     Returns:
         字典，键为股票代码，值为对应的更新时间（可能为 None）。
     """
-    raise NotImplementedError
+    if not stocks:
+        return {}
+
+    async with get_session() as session:
+        # 查询已存在的记录
+        result = await session.execute(
+            select(UpdateRecord).where(
+                UpdateRecord.stock.in_(stocks), UpdateRecord.key == key
+            )
+        )
+        existing_records = {r.stock: r.update_time for r in result.scalars().all()}
+
+        # 插入缺失的记录
+        missing_stocks = [s for s in stocks if s not in existing_records]
+        if missing_stocks:
+            new_records = [
+                UpdateRecord(stock=s, key=key, update_time=None)
+                for s in missing_stocks
+            ]
+            session.add_all(new_records)
+
+        # 构建返回结果
+        return {s: existing_records.get(s) for s in stocks}
 
 
 async def set_update_time(
@@ -113,7 +191,20 @@ async def set_update_time(
     Raises:
         ValueError: 如果未找到对应的记录（应先查询后更新）。
     """
-    raise NotImplementedError
+    async with get_session() as session:
+        result = await session.execute(
+            select(UpdateRecord).where(
+                UpdateRecord.stock == stock, UpdateRecord.key == key
+            )
+        )
+        record = result.scalar_one_or_none()
+
+        if record is None:
+            raise ValueError(
+                f"UpdateRecord not found for stock={stock}, key={key}"
+            )
+
+        record.update_time = update_time
 
 
 __all__ = [
