@@ -62,7 +62,7 @@ class TestChunkStorage:
     """分块存储测试。"""
 
     @pytest.mark.asyncio
-    async def test_save_and_load_chunks(self, sample_chunk_list, tmp_path):
+    async def test_save_and_load_chunks(self, test_engine, sample_chunk_list, tmp_path):
         """保存后加载应还原相同的 ChunkList。"""
         storage_dir = tmp_path / "chunks"
         await save_chunks(
@@ -81,7 +81,7 @@ class TestChunkStorage:
         assert loaded.total_tokens == 300
 
     @pytest.mark.asyncio
-    async def test_load_nonexistent(self, tmp_path):
+    async def test_load_nonexistent(self, test_engine, tmp_path):
         """加载不存在的记录应返回 None。"""
         storage_dir = tmp_path / "chunks"
         result = await load_chunks(
@@ -91,7 +91,7 @@ class TestChunkStorage:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_overwrite_existing(self, sample_chunk_list, tmp_path):
+    async def test_overwrite_existing(self, test_engine, sample_chunk_list, tmp_path):
         """覆盖写入（同一 stock_code + report_date 保存两次）应幂等，第二次覆盖第一次。"""
         storage_dir = tmp_path / "chunks"
 
@@ -135,7 +135,7 @@ class TestChunkStorage:
         assert len(loaded.chunks) == 1
 
     @pytest.mark.asyncio
-    async def test_contained_chapters_persistence(self, chunk_with_contained_chapters, tmp_path):
+    async def test_contained_chapters_persistence(self, test_engine, chunk_with_contained_chapters, tmp_path):
         """contained_chapters 信息应能正确序列化/反序列化。"""
         storage_dir = tmp_path / "chunks"
 
@@ -159,7 +159,7 @@ class TestChunkStorage:
         assert titles == {"第一节", "第二节"}
 
     @pytest.mark.asyncio
-    async def test_multiple_stocks(self, sample_chunk_list, tmp_path):
+    async def test_multiple_stocks(self, test_engine, sample_chunk_list, tmp_path):
         """多股票数据应相互隔离。"""
         storage_dir = tmp_path / "chunks"
 
@@ -203,7 +203,7 @@ class TestChunkStorage:
         assert loaded_b.chunks[0].text == "# 股票 B 章节\n内容"
 
     @pytest.mark.asyncio
-    async def test_empty_chunklist(self, tmp_path):
+    async def test_empty_chunklist(self, test_engine, tmp_path):
         """空 ChunkList 应能正确处理。"""
         storage_dir = tmp_path / "chunks"
         empty_list = ChunkList(source="empty.pdf", chunks=[], total_tokens=0, chapter_count=0)
