@@ -8,14 +8,15 @@
 - core.data.models：Chunk, ChunkList
 - core.data.summary_models：ChunkSummaryOutput
 """
+
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from httpx import AsyncClient
 import logfire
+from httpx import AsyncClient
 from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.deepseek import DeepSeekProvider
@@ -106,6 +107,7 @@ async def _run_agent(
     model_settings: ModelSettings,
     api_key: str,
     model: str,
+    retries: int,
 ) -> ChunkSummaryOutput:
     """内部函数：运行 PydanticAI Agent。
 
@@ -139,17 +141,18 @@ async def _run_agent(
             output_type=ChunkSummaryOutput,
             deps_type=SummarizeContext,
             model_settings=model_settings,
+            retries=retries,
         )
 
         # 注册 system prompt
         @agent.system_prompt
-        def system_prompt() -> str:
+        def system_prompt() -> str:  # pyright: ignore[reportUnusedFunction] 仅通过装饰器注册
             return _build_system_prompt()
 
         # 注册 output validator
         @agent.output_validator
-        async def validate_output(
-            ctx: RunContext[SummarizeContext], output: ChunkSummaryOutput
+        async def validate_output(  # pyright: ignore[reportUnusedFunction] 仅通过装饰器注册
+            _: RunContext[SummarizeContext], output: ChunkSummaryOutput
         ) -> ChunkSummaryOutput:
             if not output.key_points:
                 raise ModelRetry("key_points 不能为空，请重新生成")
@@ -299,7 +302,7 @@ async def summarize_chunk(
 
     try:
         result = await _run_agent(
-            user_prompt, context, model_settings, api_key, model
+            user_prompt, context, model_settings, api_key, model, retries
         )
         return result
     except ModelRetry as e:

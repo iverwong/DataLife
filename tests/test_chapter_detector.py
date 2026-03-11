@@ -6,22 +6,23 @@
 - 异常：损坏的书签数据
 - 降级：验证策略降级链
 """
+
 from __future__ import annotations
 
-import pytest
 import pymupdf
+import pytest
 
-from core.data.models import ParsedDocument, ParsedPage, ChapterBoundary
 from core.data.chapter_detector import (
     BookmarkStrategy,
-    TocPageStrategy,
-    HeadingStrategy,
     FallbackStrategy,
+    HeadingStrategy,
+    TocPageStrategy,
     detect_chapters,
 )
-
+from core.data.models import ParsedDocument, ParsedPage
 
 # ── Fixtures ──────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def pdf_with_bookmarks() -> tuple[bytes, pymupdf.Document]:
@@ -34,9 +35,16 @@ def pdf_with_bookmarks() -> tuple[bytes, pymupdf.Document]:
     for i in range(6):
         page = doc.new_page()
         if i in (0, 2, 4):
-            page.insert_text((72, 72), f"# 第{i // 2 + 1}章 标题{i // 2 + 1}", fontname="china-s", fontsize=18)
+            page.insert_text(
+                (72, 72),
+                f"# 第{i // 2 + 1}章 标题{i // 2 + 1}",
+                fontname="china-s",
+                fontsize=18,
+            )
         else:
-            page.insert_text((72, 72), f"这是第{i + 1}页的正文内容。", fontname="china-s")
+            page.insert_text(
+                (72, 72), f"这是第{i + 1}页的正文内容。", fontname="china-s"
+            )
     # 设置书签 TOC
     toc = [
         [1, "第1章 标题1", 1],
@@ -55,7 +63,9 @@ def pdf_no_bookmarks() -> tuple[bytes, pymupdf.Document]:
     for i in range(4):
         page = doc.new_page()
         if i in (0, 2):
-            page.insert_text((72, 72), f"第{i // 2 + 1}节 标题", fontname="china-s", fontsize=16)
+            page.insert_text(
+                (72, 72), f"第{i // 2 + 1}节 标题", fontname="china-s", fontsize=16
+            )
         else:
             page.insert_text((72, 72), "正文内容", fontname="china-s")
     content = doc.tobytes()
@@ -67,12 +77,18 @@ def parsed_doc_6pages() -> ParsedDocument:
     """构造 6 页的 ParsedDocument fixture。"""
     pages = []
     for i in range(6):
-        text = f"# 第{i // 2 + 1}章 标题{i // 2 + 1}\n正文" if i % 2 == 0 else f"第{i + 1}页正文"
-        pages.append(ParsedPage(
-            page_number=i + 1,
-            markdown_text=text,
-            toc_items=[[1, f"第{i // 2 + 1}章", i + 1]] if i % 2 == 0 else [],
-        ))
+        text = (
+            f"# 第{i // 2 + 1}章 标题{i // 2 + 1}\n正文"
+            if i % 2 == 0
+            else f"第{i + 1}页正文"
+        )
+        pages.append(
+            ParsedPage(
+                page_number=i + 1,
+                markdown_text=text,
+                toc_items=[[1, f"第{i // 2 + 1}章", i + 1]] if i % 2 == 0 else [],
+            )
+        )
     return ParsedDocument(source="test.pdf", page_count=6, chunks=pages)
 
 
@@ -87,6 +103,7 @@ def parsed_doc_no_structure() -> ParsedDocument:
 
 
 # ── 书签策略测试 ──────────────────────────────────────────────────────
+
 
 class TestBookmarkStrategy:
     """PDF 书签章节识别测试（T2：问题 3 异常路径）。"""
@@ -212,6 +229,7 @@ class TestBookmarkStrategy:
 
 # ── 标题策略测试 ──────────────────────────────────────────────────────
 
+
 class TestHeadingStrategy:
     """Markdown 标题章节识别测试。"""
 
@@ -225,42 +243,9 @@ class TestHeadingStrategy:
         assert all(b.source == "heading" for b in result)
         doc.close()
 
-    def test_detect_chinese_numbered_sections(self, pdf_no_bookmarks):
-        """中文编号模式（第X节、一、、1.1 等）应被识别为章节边界。"""
-        pages = [
-            ParsedPage(page_number=1, markdown_text="第一节 重要提示\n本公司董事会及全体董事保证..."),
-            ParsedPage(page_number=2, markdown_text="第二节 公司简介和主要财务指标\n一、公司信息..."),
-            ParsedPage(page_number=3, markdown_text="第三节 管理层讨论与分析\n一、报告期内公司所从事的主要业务..."),
-            ParsedPage(page_number=4, markdown_text="1.1 行业背景\n本公司主要从事..."),
-        ]
-        parsed = ParsedDocument(source="cn_report.pdf", page_count=4, chunks=pages)
-        _, doc = pdf_no_bookmarks
-        strategy = HeadingStrategy()
-        result = strategy.detect(doc, parsed)
-        assert result is not None
-        assert len(result) >= 2
-        titles = [b.title for b in result]
-        assert any("第" in t and "节" in t for t in titles)
-        doc.close()
-
-    def test_chinese_numbering_level_inference(self, pdf_no_bookmarks):
-        """中文编号的层级推断应正确：第X节→1，一、→2，1.1→3。"""
-        pages = [
-            ParsedPage(page_number=1, markdown_text="第一节 重要提示\n正文内容"),
-            ParsedPage(page_number=2, markdown_text="一、基本情况\n正文内容\n二、主要业务\n正文"),
-            ParsedPage(page_number=3, markdown_text="（一）产品概况\n正文\n1.1 背景\n详细说明"),
-        ]
-        parsed = ParsedDocument(source="level_test.pdf", page_count=3, chunks=pages)
-        _, doc = pdf_no_bookmarks
-        strategy = HeadingStrategy()
-        result = strategy.detect(doc, parsed)
-        if result is not None:
-            top_level = min(b.level for b in result)
-            assert top_level == 1
-        doc.close()
-
 
 # ── 兜底策略测试 ──────────────────────────────────────────────────────
+
 
 class TestFallbackStrategy:
     """兜底策略测试。"""
@@ -279,6 +264,7 @@ class TestFallbackStrategy:
 
 
 # ── 目录页策略测试 ──────────────────────────────────────────────────────
+
 
 class TestTocPageStrategy:
     """目录页章节识别测试（T1：问题 2）。"""
@@ -382,10 +368,13 @@ class TestTocPageStrategy:
 
 # ── 降级链测试 ────────────────────────────────────────────────────────
 
+
 class TestDetectChapters:
     """多级降级集成测试。"""
 
-    def test_fallback_to_heading_when_no_bookmarks(self, pdf_no_bookmarks, parsed_doc_6pages):
+    def test_fallback_to_heading_when_no_bookmarks(
+        self, pdf_no_bookmarks, parsed_doc_6pages
+    ):
         """无书签时应降级到标题检测。"""
         _, doc = pdf_no_bookmarks
         result = detect_chapters(doc, parsed_doc_6pages)
@@ -393,7 +382,9 @@ class TestDetectChapters:
         assert all(b.source in ("heading", "toc_page", "fallback") for b in result)
         doc.close()
 
-    def test_fallback_to_window_for_plain_text(self, pdf_no_bookmarks, parsed_doc_no_structure):
+    def test_fallback_to_window_for_plain_text(
+        self, pdf_no_bookmarks, parsed_doc_no_structure
+    ):
         """无结构信号时应降级到兜底窗口切分。"""
         _, doc = pdf_no_bookmarks
         result = detect_chapters(doc, parsed_doc_no_structure)

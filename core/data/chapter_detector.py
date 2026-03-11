@@ -12,12 +12,11 @@ from __future__ import annotations
 
 import re
 from abc import ABC, abstractmethod
-from typing import override
+from typing import Any, cast, override
 
 import pymupdf
 
 from core.data.models import ChapterBoundary, ParsedDocument
-from core.types_.pymupdf import TocEntry
 
 
 class ChapterDetectionStrategy(ABC):
@@ -69,7 +68,7 @@ class BookmarkStrategy(ChapterDetectionStrategy):
         parsed: ParsedDocument,
     ) -> list[ChapterBoundary] | None:
         # 获取书签列表
-        toc: list[TocEntry] = doc.get_toc()  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+        toc: list[list[Any]] = doc.get_toc()  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType, reportExplicitAny]
         if not toc:
             return None
 
@@ -79,9 +78,9 @@ class BookmarkStrategy(ChapterDetectionStrategy):
         for toc_entry in toc:
             # toc_entry 格式: [level, title, page_number, ...]
             # page_number 是 1-based
-            level = toc_entry[0]
-            title = toc_entry[1]
-            page_number = toc_entry[2]
+            level = cast(int, toc_entry[0])
+            title = cast(str, toc_entry[1])
+            page_number = cast(int, toc_entry[2])
 
             # 跳过无效页码
             if page_number < 1 or page_number > parsed.page_count:
@@ -98,7 +97,7 @@ class BookmarkStrategy(ChapterDetectionStrategy):
                 )
 
                 if normalized_title not in normalized_page:
-                    continue  # 验证失败，跳过此书签
+                    return None  # 验证失败则降级
 
             # 创建边界
             boundary = ChapterBoundary(
@@ -113,9 +112,6 @@ class BookmarkStrategy(ChapterDetectionStrategy):
         # 有效书签不足 2 个则返回 None
         if len(boundaries) < 2:
             return None
-
-        # 按 start_page 排序
-        boundaries.sort(key=lambda b: b.start_page)
 
         # 计算每个章节的 end_page（下一个同级或更高级书签的 start_page - 1）
         result: list[ChapterBoundary] = []
@@ -135,7 +131,9 @@ class BookmarkStrategy(ChapterDetectionStrategy):
                     title=boundary.title,
                     level=boundary.level,
                     start_page=boundary.start_page,
-                    end_page=end_page,
+                    end_page=max(
+                        end_page, boundary.start_page
+                    ),  # 如同页的话，那么直接取当前页就行了
                     source=boundary.source,
                 )
             )
@@ -158,7 +156,7 @@ class TocPageStrategy(ChapterDetectionStrategy):
     )
     # 目录项提取正则：匹配 "章节名 ....... 页码"
     TOC_ENTRY_PATTERN: re.Pattern[str] = re.compile(
-        r"^(.+?)\s*[.…·\-_]{3,}\s*(\d+)\s*$",
+        r"^(.+?)\s*[.…·\-_]{3,}\s*(\d+(?:\s+\d+)*)\s*$",
         re.MULTILINE,
     )
     # 搜索目录的最大页数范围
@@ -187,26 +185,50 @@ class TocPageStrategy(ChapterDetectionStrategy):
 
         for match in self.TOC_ENTRY_PATTERN.finditer(toc_page_text):
             title = match.group(1).strip()
-            page_num = int(match.group(2))
+            page_num = int(
+                re.sub(r"\s+", "", match.group(2))
+            )  # 增加了捕获和处理页码中间有空格的情况
             entries.append((title, page_num))
 
         if len(entries) < 2:
             return None
 
-        # 计算页码偏移：找到第一个可验证的目录项
+        # 用页脚计算偏移：取 PDF 最后几页，从页脚提取印刷页码
+        _FOOTER_PATTERN: re.Pattern[str] = re.compile(
+            r"(?<!\d)(\d{1,3})(?:\s*/\s*(\d{1,3}))?(?!\d)", re.MULTILINE
+        )
         offset: int | None = None
-        for title, printed_page in entries:
-            # 在 PDF 中查找该标题
-            normalized_title = title.replace(" ", "").replace("\u3000", "")
-            for pdf_page_idx in range(toc_page_idx, parsed.page_count):
-                page_text = parsed.chunks[pdf_page_idx].markdown_text
-                normalized_page = (
-                    page_text.replace(" ", "").replace("\n", "").replace("\u3000", "")
-                )
-                if normalized_title in normalized_page:
-                    # 计算偏移：印刷页码 vs PDF 页码
-                    pdf_page = pdf_page_idx + 1
-                    offset = printed_page - pdf_page
+        max_page = parsed.page_count
+
+        # 搜索最后 3 页的页脚
+        for pdf_page_idx in range(
+            parsed.page_count - 1, max(0, parsed.page_count - 4), -1
+        ):
+            page_chunk = parsed.chunks[pdf_page_idx]
+            # 从 markdown 最后几行提取页脚
+            lines = page_chunk.markdown_text.strip().split("\n")
+            footer_lines = lines[-5:]  # 取最后 5 行
+            pdf_page = pdf_page_idx + 1
+
+            for line in footer_lines:
+                match = _FOOTER_PATTERN.search(line.strip())
+                if match:
+                    footer_page = int(match.group(1))
+                    total_from_footer = match.group(2)
+
+                    # 合理性检查：页码应该接近总页数
+                    if abs(footer_page - max_page) > 15:
+                        continue
+
+                    # 如果有 /Y 格式，检查 X 和 Y 是否一致（仅对最后一页有意义）
+                    if total_from_footer is not None:
+                        total_page = int(total_from_footer)
+                        # 如果是最后一页，X 和 Y 应该一致
+                        if pdf_page == max_page and footer_page != total_page:
+                            continue
+
+                    # 计算偏移：印刷页码 - PDF 页码
+                    offset = footer_page - pdf_page
                     break
             if offset is not None:
                 break
@@ -233,25 +255,20 @@ class TocPageStrategy(ChapterDetectionStrategy):
         if len(boundaries) < 2:
             return None
 
-        # 按 start_page 排序
-        boundaries.sort(key=lambda b: b.start_page)
-
-        # 计算 end_page
+        # 计算 end_page（所有 level=1，直接取下一个边界）
         result: list[ChapterBoundary] = []
         for i, boundary in enumerate(boundaries):
-            next_start = parsed.page_count + 1
-            for j in range(i + 1, len(boundaries)):
-                if boundaries[j].level <= boundary.level:
-                    next_start = boundaries[j].start_page
-                    break
-            end_page = next_start - 1
+            if i + 1 < len(boundaries):
+                end_page = boundaries[i + 1].start_page - 1
+            else:
+                end_page = parsed.page_count  # 最后一章到文档末尾
 
             result.append(
                 ChapterBoundary(
                     title=boundary.title,
                     level=boundary.level,
                     start_page=boundary.start_page,
-                    end_page=end_page,
+                    end_page=max(end_page, boundary.start_page),
                     source=boundary.source,
                 )
             )
@@ -282,34 +299,6 @@ class HeadingStrategy(ChapterDetectionStrategy):
         re.MULTILINE,
     )
 
-    # 中文财报常见编号模式
-    CN_SECTION_PATTERN: re.Pattern[str] = re.compile(
-        (
-            r"^\*{0,2}(?:"
-            r"第[一二三四五六七八九十\d]+(?:节|章|部分)"
-            r"|[一二三四五六七八九十]+[、.]"
-            r"|[（(][一二三四五六七八九十\d]+[)）]"
-            r"|\d+[、.](?!\d)"
-            r"|\d+\.\d+"
-            r")\s*.+$"
-        ),
-        re.MULTILINE,
-    )
-
-    # 中文数字到阿拉伯数字的映射
-    _CN_DIGITS: dict[str, int] = {
-        "一": 1,
-        "二": 2,
-        "三": 3,
-        "四": 4,
-        "五": 5,
-        "六": 6,
-        "七": 7,
-        "八": 8,
-        "九": 9,
-        "十": 10,
-    }
-
     @override
     def detect(
         self,
@@ -319,11 +308,11 @@ class HeadingStrategy(ChapterDetectionStrategy):
         boundaries: list[ChapterBoundary] = []
 
         # 遍历所有页面
-        for _, page in enumerate(parsed.chunks):
+        for page in parsed.chunks:
             page_text = page.markdown_text
             page_number = page.page_number
 
-            # 通道 A: Markdown 标题检测
+            # Markdown 标题检测
             for match in self.MARKDOWN_HEADING_PATTERN.finditer(page_text):
                 level = len(match.group(1))  # # → 1, ## → 2, ### → 3
                 title = match.group(2).strip()
@@ -337,26 +326,8 @@ class HeadingStrategy(ChapterDetectionStrategy):
                     )
                 )
 
-            # 通道 B: 中文编号检测
-            for match in self.CN_SECTION_PATTERN.finditer(page_text):
-                title = match.group(0).strip()
-                # 推断 level
-                level = self._infer_chinese_level(title)
-                boundaries.append(
-                    ChapterBoundary(
-                        title=title,
-                        level=level,
-                        start_page=page_number,
-                        end_page=page_number,  # 临时值
-                        source="heading",
-                    )
-                )
-
         if len(boundaries) < 2:
             return None
-
-        # 按 start_page 排序
-        boundaries.sort(key=lambda b: (b.start_page, b.level))
 
         # 计算 end_page
         result: list[ChapterBoundary] = []
@@ -373,31 +344,12 @@ class HeadingStrategy(ChapterDetectionStrategy):
                     title=boundary.title,
                     level=boundary.level,
                     start_page=boundary.start_page,
-                    end_page=end_page,
+                    end_page=max(end_page, boundary.start_page),
                     source=boundary.source,
                 )
             )
 
         return result
-
-    def _infer_chinese_level(self, title: str) -> int:
-        """推断中文编号标题的层级。
-
-        规则：
-        - 第X节/章/部分 → level 1
-        - 一、二、三、 → level 2
-        - （一）(1) 1.1 → level 3
-        """
-        # 第X节/章/部分
-        if re.match(r"^第[一二三四五六七八九十\d]+(?:节|章|部分)", title):
-            return 1
-        # 一、二、三、或 1、2、3、
-        if re.match(r"^[一二三四五六七八九十\d]+[、.]\s", title):
-            return 2
-        # （一）(1) 1.1 等
-        if re.match(r"^[（(][一二三四五六七八九十\d]+[)）]|\d+\.\d+", title):
-            return 3
-        return 1  # 默认 level 1
 
 
 class FallbackStrategy(ChapterDetectionStrategy):
@@ -417,7 +369,7 @@ class FallbackStrategy(ChapterDetectionStrategy):
         self,
         doc: pymupdf.Document,
         parsed: ParsedDocument,
-    ) -> list[ChapterBoundary] | None:
+    ) -> list[ChapterBoundary]:
         # 返回覆盖全文的单一章节
         return [
             ChapterBoundary(
@@ -458,13 +410,5 @@ def detect_chapters(
         if result is not None:
             return result
 
-    # FallbackStrategy 应该始终返回结果，这里是安全网
-    return [
-        ChapterBoundary(
-            title="全文",
-            level=1,
-            start_page=1,
-            end_page=parsed.page_count,
-            source="fallback",
-        )
-    ]
+    # 不应该到达这里 - FallbackStrategy 已返回结果，此处是防御性代码
+    raise RuntimeError("章节检测循环应包括兜底策略")

@@ -63,7 +63,6 @@ async def parse_pdf(
     pdf_path: str | Path,
     *,
     pages: list[int] | None = None,
-    include_header_footer: bool = False,
 ) -> PDFParseResult:
     """将 PDF 文件解析为结构化 Markdown。
 
@@ -115,7 +114,6 @@ async def parse_pdf(
             doc,
             source=source,
             pages=pages,
-            include_header_footer=include_header_footer,
         )
 
         return result
@@ -153,7 +151,6 @@ async def parse_pdf_bytes(
     *,
     source: str = "unknown.pdf",
     pages: list[int] | None = None,
-    include_header_footer: bool = False,
 ) -> PDFParseResult:
     """从内存字节流解析 PDF。
 
@@ -198,7 +195,6 @@ async def parse_pdf_bytes(
             doc,
             source=source,
             pages=pages,
-            include_header_footer=include_header_footer,
         )
 
         return result
@@ -228,11 +224,7 @@ async def parse_pdf_bytes(
 
 
 def _parse_document(
-    doc: pymupdf.Document,
-    *,
-    source: str,
-    pages: list[int] | None = None,
-    include_header_footer: bool = False,
+    doc: pymupdf.Document, *, source: str, pages: list[int] | None = None
 ) -> PDFParseResult:
     """内部共享解析逻辑（同步）。
 
@@ -259,16 +251,13 @@ def _parse_document(
         doc,
         pages=pages,
         page_chunks=True,
-        header=include_header_footer,
-        footer=include_header_footer,
         force_text=True,
         show_progress=False,
     )
 
     chunks: list[PageChunk] = []
     for chunk_dict in chunks_raw:
-        # pymupdf4llm 返回的 page_number 是 0-based，转换为 1-based
-        # pymupdf4llm 返回的 page_number 已经是 1-based
+        # pymupdf4llm 返回的 page_number 是 1-based
         page_number: int = chunk_dict.get("metadata", {}).get("page_number", 1)  # pyright: ignore[reportAny]
 
         # 提取 markdown 文本并清理

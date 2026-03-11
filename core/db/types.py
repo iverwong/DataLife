@@ -3,9 +3,13 @@
 提供 JSON 序列化/反序列化支持，用于 ORM 模型中的 JSON 字段。
 """
 
-from dataclasses import asdict, is_dataclass
+from __future__ import annotations
+
+from dataclasses import Field, asdict, is_dataclass
 from typing import (
     Any,
+    ClassVar,
+    Protocol,
     TypeVar,
     cast,
     final,
@@ -16,12 +20,15 @@ from typing import (
     override,
 )
 
-from _typeshed import DataclassInstance
 from pydantic import BaseModel
 from sqlalchemy import Dialect
 from sqlalchemy.types import JSON, TypeDecorator
 
 T = TypeVar("T", bound=object)
+
+
+class DataclassInstance(Protocol):
+    __dataclass_fields__: ClassVar[dict[str, Field[Any]]]  # pyright: ignore[reportExplicitAny]
 
 
 @final

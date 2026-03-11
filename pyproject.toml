@@ -4,3 +4,20 @@ pythonVersion = "3.13"
 
 [tool.ruff]
 include = ["core/**/*.py"]
+
+[tool.logfire]
+ignore_no_config = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+filterwarnings = [
+    "ignore:The test .* is marked with '@pytest.mark.asyncio' but it is not an async function:pytest.PytestWarning",
+]
+testpaths = ["tests"]
+markers = [
+    "unit: 标记为单元测试",
+    "integration: 标记为集成测试",
+    "fast: 执行时间少于1秒的快速测试",
+    "slow: 执行时间超过1秒的慢速测试",
+    "real_network: 需要真实网络连接的测试",
+]

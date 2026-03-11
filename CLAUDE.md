@@ -19,11 +19,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 所有 Python 命令都必须在虚拟环境中执行：
 
 ```bash
-# 激活虚拟环境（每次会话开始时执行）
-./venv/Scripts/activate
+# 使用虚拟环境运行Python
+./venv/Scripts/python
 
-# 验证虚拟环境已激活
-python --version  # 应显示 Python 路径在 venv 下
+# 使用虚拟环境运行pytest
+./venv/Scripts/python -m pytest
+
+# 使用虚拟环境运行basedpyright
+./venv/Scripts/python -m basedpyright
+
+# 使用虚拟环境运行ruff
+./venv/Scripts/python -m ruff
 ```
 
 ## 快速开始
@@ -55,7 +61,7 @@ python main.py
 | 数据采集    | `core/data/`     | 外部 API 调用与原始数据获取       |
 | 领域模型    | `core/models/`   | 跨模块共享的数据类型定义          |
 | 本地持久化  | `core/db/`       | SQLite 去重哈希与更新时间管理     |
-| Notion 集成 | `core/notion/`   | Notion API 交互（CRUD、文件上传）|
+| Notion 集成 | `core/notion/`   | Notion API 交互（CRUD、文件上传） |
 | 业务编排    | `core/handlers/` | 协调各层完成业务流程              |
 
 ### 公告处理流程
@@ -177,11 +183,11 @@ pytest tests/ --cov=core --cov-report=html
 
 ### 测试标记
 
-| 标记                        | 说明                   |
-| --------------------------- | ---------------------- |
-| `@pytest.mark.unit`         | 单元测试（使用 mock）  |
-| `@pytest.mark.asyncio`      | 异步测试               |
-| `@pytest.mark.real_network` | 需要真实网络请求       |
+| 标记                        | 说明                  |
+| --------------------------- | --------------------- |
+| `@pytest.mark.unit`         | 单元测试（使用 mock） |
+| `@pytest.mark.asyncio`      | 异步测试              |
+| `@pytest.mark.real_network` | 需要真实网络请求      |
 
 ## 常用命令
 
