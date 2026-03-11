@@ -11,9 +11,35 @@ import pymupdf
 
 from core.data.chapter_detector import detect_chapters
 from core.data.chunk_storage import save_chunks
-from core.data.chunker import build_chunks
-from core.data.models import ChunkList, ParsedDocument
+from core.data.chunker import build_chunks, split_text_by_token_window
+from core.data.models import Chunk, ChunkList, ChunkType, ParsedDocument, TextSegment
 from core.data.token_counter import count_tokens
+
+# 直通阈值倍数
+BYPASS_THRESHOLD_FACTOR: int = 3
+
+
+def _build_bypass_chunk_list(
+    parsed: ParsedDocument,
+    segments: list[TextSegment],
+    *,
+    overlap_tokens: int,
+) -> ChunkList:
+    """将 TextSegment 列表包装为 ChunkList（直通路径专用）。
+
+    每个 TextSegment 包装为一个 TOKEN_WINDOW 类型的 Chunk，
+    chapter_path 为空（交给 LLM 在摘要阶段识别章节），
+    page_range 覆盖整个文档。
+
+    Args:
+        parsed: 原始 ParsedDocument。
+        segments: split_text_by_token_window 产出的分段列表。
+        overlap_tokens: overlap token 数（用于日志）。
+
+    Returns:
+        ChunkList 对象。
+    """
+    raise NotImplementedError
 
 
 async def chunk_document(

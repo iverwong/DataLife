@@ -22,11 +22,11 @@ from core.data.models import (
     ChunkType,
     MergedChapter,
     ParsedDocument,
+    TextSegment,
 )
 from core.data.token_counter import (
     count_tokens,
-    truncate_tail_tokens,
-    truncate_to_tokens,
+    slice_tokens,
 )
 
 # ── 常量 ──────────────────────────────────────────────────────────────
@@ -715,3 +715,37 @@ def _split_oversized_paragraph(
         return None
 
     return result
+
+
+def split_text_by_token_window(
+    text: str,
+    max_tokens: int,
+    overlap_tokens: int = 0,
+) -> list[TextSegment]:
+    """将文本按 token 窗口拆分为多个 TextSegment，保证无内容丢失。
+
+    使用 slice_tokens 实现精确的滑动窗口，每个窗口包含 max_tokens 个 token，
+    相邻窗口之间有 overlap_tokens 个 token 的重叠。
+
+    算法：
+    1. 计算总 token 数
+    2. 若总量 <= max_tokens，直接返回单个 TextSegment
+    3. 否则，从 start=0 开始，步长为 max_tokens - overlap_tokens，
+       循环调用 slice_tokens(text, start, max_tokens) 产出 TextSegment
+    4. 确保最后一个 TextSegment 覆盖到文本末尾
+
+    降级行为：
+    - text 为空: 返回空列表
+    - max_tokens <= 0: 返回空列表
+    - overlap_tokens >= max_tokens: 自动修正 overlap_tokens = 0（避免无限循环）
+    - overlap_tokens < 0: 自动修正为 0
+
+    Args:
+        text: 待拆分的文本。
+        max_tokens: 每个窗口的最大 token 数。
+        overlap_tokens: 相邻窗口的重叠 token 数。
+
+    Returns:
+        TextSegment 列表，按文本顺序排列。
+    """
+    raise NotImplementedError
