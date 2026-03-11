@@ -527,10 +527,8 @@ def _split_by_token_window(
 ) -> list[Chunk]:
     """按 token 窗口 + overlap 切分文本。
 
-    切分降级链：
-    1. 按段落（\n\n）分割 - 优先在段落边界断开
-    2. 单段落仍超限时按行（\n）分割 - 退而求其次
-    3. 单行仍超限时硬截断 - 最后兜底
+    调用 split_text_by_token_window 获取无损的 TextSegment 列表，
+    然后将每个 TextSegment 包装为 Chunk。
 
     Args:
         text: 待切分的 Markdown 文本。
@@ -542,82 +540,41 @@ def _split_by_token_window(
     Returns:
         Chunk 列表（至少一个元素）。
     """
-    # 降级链尝试：段落 -> 行 -> 硬截断
-    split_results = _split_oversized_paragraph(text, max_tokens, "\n\n")
-    if split_results is None:
-        # 段落分割失败（可能只有1个段落），尝试按行分割
-        split_results = _split_oversized_paragraph(text, max_tokens, "\n")
-        if split_results is None:
-            # 行分割也失败（可能只有1行），直接硬截断
-            return _hard_truncate_chunk(
-                text, chapter_path, page_range, max_tokens, overlap_tokens
+    # 调用 split_text_by_token_window 获取无损的 TextSegment 列表
+    segments = split_text_by_token_window(text, max_tokens, overlap_tokens)
+
+    if not segments:
+        # 降级：空文本或无效参数，返回单个截断 chunk
+        truncated = slice_tokens(text, 0, max_tokens) if text else ""
+        return [
+            ChunkBuilder.create_chunk(
+                text=truncated,
+                chapter_path=chapter_path,
+                page_range=page_range,
+                chunk_type=ChunkType.TOKEN_WINDOW,
+                chunk_index=0,
+                needs_prior_summary=False,
             )
+        ]
 
-    # 过滤并处理超长片段：每个片段不能超过 max_tokens
-    processed_segments: list[str] = []
-    for segment in split_results:
-        seg_tokens = count_tokens(segment)
-        if seg_tokens <= max_tokens:
-            processed_segments.append(segment)
-        else:
-            # 片段本身超限，需要硬截断
-            truncated = slice_tokens(segment, 0, max_tokens)
-            processed_segments.append(truncated)
-
-    if not processed_segments:
-        return _hard_truncate_chunk(
-            text, chapter_path, page_range, max_tokens, overlap_tokens
-        )
-
-    # 根据分割结果构建 chunks，处理 overlap
+    # 将每个 TextSegment 包装为 Chunk
     chunks: list[Chunk] = []
-    chunk_index = 0
 
-    for i, segment in enumerate(processed_segments):
-        if i == 0:
-            # 第一个片段，直接添加
-            chunks.append(
-                ChunkBuilder.create_chunk(
-                    text=segment,
-                    chapter_path=chapter_path,
-                    page_range=page_range,
-                    chunk_type=ChunkType.TOKEN_WINDOW,
-                    chunk_index=chunk_index,
-                    needs_prior_summary=False,
-                )
+    for i, segment in enumerate(segments):
+        # 第一个 chunk：直接使用 TextSegment.text
+        # 后续 chunk：split_text_by_token_window 已经包含了 overlap，
+        # 每个 segment 的 text 已经包含了从前一个 segment 尾部的内容
+        # 所以直接使用 segment.text 即可
+        chunks.append(
+            ChunkBuilder.create_chunk(
+                text=segment.text,
+                chapter_path=chapter_path,
+                page_range=page_range,
+                chunk_type=ChunkType.TOKEN_WINDOW,
+                chunk_index=i,
+                needs_prior_summary=i > 0,  # 第一个 chunk 不需要前置摘要
             )
-            chunk_index += 1
-        else:
-            # 后续片段，添加 overlap
-            # 注意：full_text 的 token 数应 <= max_tokens，需要从 segment 中预留 overlap 空间
-            prev_text = chunks[i - 1].text
-            overlap_text = slice_tokens(prev_text, count_tokens(prev_text) - overlap_tokens, overlap_tokens)
-            overlap_token_count = count_tokens(overlap_text)
-
-            # 从 segment 中截取，预留 overlap 空间
-            available_tokens = max_tokens - overlap_token_count - 1  # -1 for newline
-            if available_tokens > 0:
-                segment_with_space = slice_tokens(segment, 0, available_tokens)
-            else:
-                segment_with_space = ""
-
-            full_text = (
-                overlap_text + "\n" + segment_with_space
-                if overlap_text
-                else segment_with_space
-            )
-
-            chunks.append(
-                ChunkBuilder.create_chunk(
-                    text=full_text,
-                    chapter_path=chapter_path,
-                    page_range=page_range,
-                    chunk_type=ChunkType.TOKEN_WINDOW,
-                    chunk_index=chunk_index,
-                    needs_prior_summary=True,
-                )
-            )
-            chunk_index += 1
+        )
 
     return chunks
 
