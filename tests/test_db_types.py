@@ -6,39 +6,14 @@
 - JsonKeyDataItemList: 处理 list[KeyDataItem]
 - JsonPydanticModel: 处理 ChunkSummaryOutput
 """
+
 from __future__ import annotations
 
 import pytest
+from sqlalchemy.dialects import sqlite
 
 from core.data.models import ChunkMeta
 from core.data.summary_models import ChunkSummaryOutput, KeyDataItem, PeriodInfo
-
-
-class TestJsonStringList:
-    """测试 JsonStringList TypeDecorator。"""
-
-    @pytest.mark.unit
-    @pytest.mark.parametrize(
-        "input_value,expected",
-        [
-            (["a", "b", "c"], ["a", "b", "c"]),
-            (["hello", "world"], ["hello", "world"]),
-            ([], []),
-            (None, None),
-        ],
-    )
-    def test_round_trip(self, input_value: list[str] | None, expected: list[str] | None) -> None:
-        """测试正常值、None 值和空列表的 round-trip。"""
-        from core.db.types import JsonStringList
-
-        type_adapter = JsonStringList()
-
-        # process_bind_param: Python → DB
-        db_value = type_adapter.process_bind_param(input_value, None)
-        # process_result_value: DB → Python
-        result = type_adapter.process_result_value(db_value, None)
-
-        assert result == expected
 
 
 class TestJsonChunkMetaList:
@@ -74,14 +49,14 @@ class TestJsonChunkMetaList:
         self, input_value: list[ChunkMeta] | None, expected: list[ChunkMeta] | None
     ) -> None:
         """测试 ChunkMeta 列表的 round-trip，验证 page_range 从 list 转 tuple。"""
-        from core.db.types import JsonChunkMetaList
+        from core.db.types import json_dataclass
 
-        type_adapter = JsonChunkMetaList()
+        type_adapter = json_dataclass(list[ChunkMeta])
 
         # process_bind_param: Python → DB
-        db_value = type_adapter.process_bind_param(input_value, None)
+        db_value = type_adapter.process_bind_param(input_value, sqlite.dialect())
         # process_result_value: DB → Python
-        result = type_adapter.process_result_value(db_value, None)
+        result = type_adapter.process_result_value(db_value, sqlite.dialect())
 
         assert result == expected
         # 额外验证：page_range 应该是 tuple 类型
@@ -93,17 +68,17 @@ class TestJsonChunkMetaList:
     @pytest.mark.unit
     def test_page_range_type_conversion(self) -> None:
         """测试 page_range 从 list 到 tuple 的类型转换。"""
-        from core.db.types import JsonChunkMetaList
+        from core.db.types import json_dataclass
 
-        type_adapter = JsonChunkMetaList()
+        type_adapter = json_dataclass(list[ChunkMeta])
 
         # 输入：ChunkMeta 的 page_range 是 tuple
         input_data = [ChunkMeta(title="测试", level=1, page_range=(1, 10))]
 
         # DB 值应该是 JSON 字符串，page_range 在 JSON 中是 list
-        db_value = type_adapter.process_bind_param(input_data, None)
+        db_value = type_adapter.process_bind_param(input_data, sqlite.dialect())
         # 从 DB 读取后，page_range 应该恢复为 tuple
-        result = type_adapter.process_result_value(db_value, None)
+        result = type_adapter.process_result_value(db_value, sqlite.dialect())
 
         assert result is not None
         assert len(result) == 1
@@ -125,14 +100,22 @@ class TestJsonKeyDataItemList:
                         label="营业收入",
                         value=1000000.0,
                         unit="元",
-                        period=PeriodInfo(start_date="2024-01-01", end_date="2024-12-31", description="2024年度"),
+                        period=PeriodInfo(
+                            start_date="2024-01-01",
+                            end_date="2024-12-31",
+                            description="2024年度",
+                        ),
                         remark="经审计",
                     ),
                     KeyDataItem(
                         label="净利润",
                         value=500000.0,
                         unit="元",
-                        period=PeriodInfo(start_date="2024-01-01", end_date="2024-12-31", description="2024年度"),
+                        period=PeriodInfo(
+                            start_date="2024-01-01",
+                            end_date="2024-12-31",
+                            description="2024年度",
+                        ),
                     ),
                 ],
                 [
@@ -140,14 +123,22 @@ class TestJsonKeyDataItemList:
                         label="营业收入",
                         value=1000000.0,
                         unit="元",
-                        period=PeriodInfo(start_date="2024-01-01", end_date="2024-12-31", description="2024年度"),
+                        period=PeriodInfo(
+                            start_date="2024-01-01",
+                            end_date="2024-12-31",
+                            description="2024年度",
+                        ),
                         remark="经审计",
                     ),
                     KeyDataItem(
                         label="净利润",
                         value=500000.0,
                         unit="元",
-                        period=PeriodInfo(start_date="2024-01-01", end_date="2024-12-31", description="2024年度"),
+                        period=PeriodInfo(
+                            start_date="2024-01-01",
+                            end_date="2024-12-31",
+                            description="2024年度",
+                        ),
                     ),
                 ],
             ),
@@ -166,23 +157,23 @@ class TestJsonKeyDataItemList:
         self, input_value: list[KeyDataItem] | None, expected: list[KeyDataItem] | None
     ) -> None:
         """测试 KeyDataItem 列表的 round-trip，验证嵌套 PeriodInfo。"""
-        from core.db.types import JsonKeyDataItemList
+        from core.db.types import json_pydantic
 
-        type_adapter = JsonKeyDataItemList()
+        type_adapter = json_pydantic(list[KeyDataItem])
 
         # process_bind_param: Python → DB
-        db_value = type_adapter.process_bind_param(input_value, None)
+        db_value = type_adapter.process_bind_param(input_value, sqlite.dialect())
         # process_result_value: DB → Python
-        result = type_adapter.process_result_value(db_value, None)
+        result = type_adapter.process_result_value(db_value, sqlite.dialect())
 
         assert result == expected
 
     @pytest.mark.unit
     def test_nested_period_info(self) -> None:
         """测试嵌套 PeriodInfo 对象的序列化与反序列化。"""
-        from core.db.types import JsonKeyDataItemList
+        from core.db.types import json_pydantic
 
-        type_adapter = JsonKeyDataItemList()
+        type_adapter = json_pydantic(list[KeyDataItem])
 
         input_data = [
             KeyDataItem(
@@ -197,8 +188,8 @@ class TestJsonKeyDataItemList:
             )
         ]
 
-        db_value = type_adapter.process_bind_param(input_data, None)
-        result = type_adapter.process_result_value(db_value, None)
+        db_value = type_adapter.process_bind_param(input_data, sqlite.dialect())
+        result = type_adapter.process_result_value(db_value, sqlite.dialect())
 
         assert result is not None
         assert len(result) == 1
@@ -229,7 +220,9 @@ class TestJsonPydanticModel:
                             label="营业收入",
                             value=1000000.0,
                             unit="元",
-                            period=PeriodInfo(start_date="2024-01-01", description="2024年度"),
+                            period=PeriodInfo(
+                                start_date="2024-01-01", description="2024年度"
+                            ),
                         )
                     ],
                     context_brief="上下文提示信息。",
@@ -244,7 +237,9 @@ class TestJsonPydanticModel:
                             label="营业收入",
                             value=1000000.0,
                             unit="元",
-                            period=PeriodInfo(start_date="2024-01-01", description="2024年度"),
+                            period=PeriodInfo(
+                                start_date="2024-01-01", description="2024年度"
+                            ),
                         )
                     ],
                     context_brief="上下文提示信息。",
@@ -274,7 +269,9 @@ class TestJsonPydanticModel:
         ],
     )
     def test_round_trip(
-        self, input_value: ChunkSummaryOutput | None, expected: ChunkSummaryOutput | None
+        self,
+        input_value: ChunkSummaryOutput | None,
+        expected: ChunkSummaryOutput | None,
     ) -> None:
         """测试 ChunkSummaryOutput 的 round-trip。"""
         from core.db.types import JsonPydanticModel
@@ -282,9 +279,9 @@ class TestJsonPydanticModel:
         type_adapter = JsonPydanticModel(ChunkSummaryOutput)
 
         # process_bind_param: Python → DB
-        db_value = type_adapter.process_bind_param(input_value, None)
+        db_value = type_adapter.process_bind_param(input_value, sqlite.dialect())
         # process_result_value: DB → Python
-        result = type_adapter.process_result_value(db_value, None)
+        result = type_adapter.process_result_value(db_value, sqlite.dialect())
 
         assert result == expected
 
@@ -311,8 +308,8 @@ class TestJsonPydanticModel:
             context_brief="上下文",
         )
 
-        db_value = type_adapter.process_bind_param(input_data, None)
-        result = type_adapter.process_result_value(db_value, None)
+        db_value = type_adapter.process_bind_param(input_data, sqlite.dialect())
+        result = type_adapter.process_result_value(db_value, sqlite.dialect())
 
         assert result is not None
         assert result.chapter_title == "测试"

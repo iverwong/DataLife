@@ -23,7 +23,11 @@ from core.data.models import (
     MergedChapter,
     ParsedDocument,
 )
-from core.data.token_counter import count_tokens, truncate_to_tokens, truncate_tail_tokens
+from core.data.token_counter import (
+    count_tokens,
+    truncate_tail_tokens,
+    truncate_to_tokens,
+)
 
 # ── 常量 ──────────────────────────────────────────────────────────────
 DEFAULT_MAX_TOKENS: int = 8000
@@ -386,7 +390,7 @@ def _split_by_subheadings(
     if sub_boundaries and parsed:
         # 使用预检测边界拆分（按页码范围）
         # 从 parsed 原始页面数据提取文本，而非使用 text.split("\n\n") 后用页码索引
-        chunks: list[Chunk] = []
+        boundary_chunks: list[Chunk] = []
 
         for boundary in sub_boundaries:
             # 从 ParsedDocument 按页码范围提取文本
@@ -395,14 +399,14 @@ def _split_by_subheadings(
                 continue
 
             if count_tokens(sub_text) <= max_tokens:
-                chunks.append(
+                boundary_chunks.append(
                     ChunkBuilder.create_chunk(
                         text=sub_text,
                         chapter_path=chapter_path + [boundary.title],
                         page_range=(boundary.start_page, boundary.end_page),
                         chunk_type=ChunkType.SUB_SECTION,
-                        chunk_index=len(chunks),
-                        needs_prior_summary=len(chunks) > 0,
+                        chunk_index=len(boundary_chunks),
+                        needs_prior_summary=len(boundary_chunks) > 0,
                     )
                 )
             else:
@@ -417,7 +421,7 @@ def _split_by_subheadings(
                     parsed=parsed,
                 )
                 if sub_chunks:
-                    chunks.extend(sub_chunks)
+                    boundary_chunks.extend(sub_chunks)
                 else:
                     # 正则检测也无法拆分，退回 token 窗口兜底
                     window_chunks = _split_by_token_window(
@@ -428,19 +432,19 @@ def _split_by_subheadings(
                         overlap_tokens=overlap_tokens,
                     )
                     for j, wc in enumerate(window_chunks):
-                        chunks.append(
+                        boundary_chunks.append(
                             ChunkBuilder.create_chunk(
                                 text=wc.text,
                                 chapter_path=chapter_path + [boundary.title],
                                 page_range=wc.page_range,
                                 chunk_type=ChunkType.TOKEN_WINDOW,
                                 chunk_index=j,
-                                needs_prior_summary=len(chunks) > 0,
+                                needs_prior_summary=len(boundary_chunks) > 0,
                             )
                         )
 
-        if chunks:
-            return chunks
+        if boundary_chunks:
+            return boundary_chunks
 
     # 退回正则检测
     # 按段落分割文本
@@ -469,7 +473,7 @@ def _split_by_subheadings(
         return None
 
     # 按子标题切分
-    chunks: list[Chunk] = []
+    heading_chunks: list[Chunk] = []
     for i, (pos, title) in enumerate(heading_positions):
         next_pos = (
             heading_positions[i + 1][0]
@@ -479,7 +483,7 @@ def _split_by_subheadings(
         sub_text = "\n\n".join(paragraphs[pos:next_pos])
 
         if count_tokens(sub_text) <= max_tokens:
-            chunks.append(
+            heading_chunks.append(
                 ChunkBuilder.create_chunk(
                     text=sub_text,
                     chapter_path=chapter_path + [title],
@@ -499,7 +503,7 @@ def _split_by_subheadings(
                 overlap_tokens=overlap_tokens,
             )
             for j, wc in enumerate(window_chunks):
-                chunks.append(
+                heading_chunks.append(
                     ChunkBuilder.create_chunk(
                         text=wc.text,
                         chapter_path=chapter_path + [title],
@@ -510,7 +514,7 @@ def _split_by_subheadings(
                     )
                 )
 
-    return chunks if chunks else None
+    return heading_chunks if heading_chunks else None
 
 
 def _split_by_token_window(

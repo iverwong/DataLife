@@ -35,7 +35,6 @@ async def save_chunk_summary(
     """保存单个 Chunk 的摘要结果。
 
     将 ChunkSummaryOutput 转为 ChunkSummaryRecord 并 add 到 session。
-    JSON 序列化字段（key_points, chapter_path, key_data）使用 json.dumps。
 
     Args:
         chunk_meta_id: chunk_meta 表中对应的记录 ID。
@@ -185,7 +184,6 @@ async def load_document_summary(
     """按股票代码和报告日期加载文档摘要。
 
     使用 select().where() 查询 DocumentSummaryRecord，反序列化为 DocumentSummary。
-    JSON 字段（all_key_points, all_key_data）使用 json.loads 反序列化。
 
     Args:
         stock_code: 股票代码。

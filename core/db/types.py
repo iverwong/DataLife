@@ -3,144 +3,248 @@
 提供 JSON 序列化/反序列化支持，用于 ORM 模型中的 JSON 字段。
 """
 
-import json
-from dataclasses import asdict
-from typing import Generic, TypeVar
+from __future__ import annotations
 
-from sqlalchemy import Text
-from sqlalchemy.types import TypeDecorator
+from dataclasses import Field, asdict, is_dataclass
+from typing import (
+    Any,
+    ClassVar,
+    Protocol,
+    TypeVar,
+    cast,
+    final,
+    get_args,
+    get_origin,
+    get_type_hints,
+    overload,
+    override,
+)
 
-from core.data.models import ChunkMeta
-from core.data.summary_models import ChunkSummaryOutput, KeyDataItem
+from pydantic import BaseModel
+from sqlalchemy import Dialect
+from sqlalchemy.types import JSON, TypeDecorator
 
 T = TypeVar("T", bound=object)
 
 
-class JsonStringList(TypeDecorator):
-    """JSON 序列化的字符串列表类型。
+class DataclassInstance(Protocol):
+    __dataclass_fields__: ClassVar[dict[str, Field[Any]]]  # pyright: ignore[reportExplicitAny]
 
-    用于存储 Python list，在数据库中以 JSON 字符串形式保存。
-    """
 
-    impl = Text
+@final
+class JsonDataclassList[T: DataclassInstance](TypeDecorator[list[T]]):
+    impl = JSON
     cache_ok = True
+    _dc_class: type[T]
 
-    def process_bind_param(self, value: list[str] | None, dialect) -> str | None:
+    def __init__(self, dc_class: type[T]) -> None:
+        super().__init__()
+        self._dc_class = dc_class
+
+    @override
+    def process_bind_param(
+        self, value: list[T] | None, dialect: Dialect
+    ) -> list[dict[str, Any]] | None:  # pyright: ignore[reportExplicitAny]
         if value is None:
             return None
-        return json.dumps(value, ensure_ascii=False)
+        return [asdict(item) for item in value]
 
-    def process_result_value(self, value: str | None, dialect) -> list[str] | None:
+    @override
+    def process_result_value(
+        self,
+        value: list[dict[str, Any]] | None,  # pyright: ignore[reportExplicitAny]
+        dialect: Dialect,
+    ) -> list[T] | None:
         if value is None:
             return None
-        return json.loads(value)
+        return [_reconstruct_dataclass(self._dc_class, item) for item in value]
 
 
-class JsonChunkMetaList(TypeDecorator):
-    """JSON 序列化的 ChunkMeta 列表类型。
-
-    用于存储 ChunkMeta 列表，在数据库中以 JSON 字符串形式保存。
-    反序列化时将 page_range 从 list 转换为 tuple。
-    """
-
-    impl = Text
+@final
+class JsonDataclass[T: DataclassInstance](TypeDecorator[T]):
+    impl = JSON
     cache_ok = True
+    _dc_class: type[T]
 
-    def process_bind_param(self, value: list[ChunkMeta] | None, dialect) -> str | None:
+    def __init__(self, dc_class: type[T]) -> None:
+        super().__init__()
+        self._dc_class = dc_class
+
+    @override
+    def process_bind_param(
+        self, value: T | None, dialect: Dialect
+    ) -> dict[str, Any] | None:  # pyright: ignore[reportExplicitAny]
         if value is None:
             return None
-        return json.dumps([asdict(chunk) for chunk in value], ensure_ascii=False)
+        return asdict(value)
 
-    def process_result_value(self, value: str | None, dialect) -> list[ChunkMeta] | None:
+    @override
+    def process_result_value(
+        self,
+        value: dict[str, Any] | None,  # pyright: ignore[reportExplicitAny]
+        dialect: Dialect,
+    ) -> T | None:
         if value is None:
             return None
-        data = json.loads(value)
-        return [
-            ChunkMeta(
-                title=item["title"],
-                level=item["level"],
-                page_range=tuple(item["page_range"]),
-            )
-            for item in data
-        ]
+        return _reconstruct_dataclass(self._dc_class, value)
 
 
-class JsonKeyDataItemList(TypeDecorator):
-    """JSON 序列化的 KeyDataItem 列表类型。
+@final
+class JsonPydanticModelList[T: BaseModel](TypeDecorator[list[T]]):
+    impl = JSON
+    cache_ok: bool | None = True
+    _model_class: type[T]
 
-    用于存储 KeyDataItem 列表，在数据库中以 JSON 字符串形式保存。
-    """
+    def __init__(self, model_class: type[T]) -> None:
+        super().__init__()
+        self._model_class = model_class
 
-    impl = Text
-    cache_ok = True
-
-    def process_bind_param(self, value: list[KeyDataItem] | None, dialect) -> str | None:
+    @override
+    def process_bind_param(
+        self, value: list[T] | None, dialect: Dialect
+    ) -> list[dict[str, Any]] | None:  # pyright: ignore[reportExplicitAny]
         if value is None:
             return None
-        return json.dumps([item.model_dump() for item in value], ensure_ascii=False)
+        return [item.model_dump(mode="json") for item in value]
 
-    def process_result_value(self, value: str | None, dialect) -> list[KeyDataItem] | None:
+    @override
+    def process_result_value(
+        self,
+        value: list[dict[str, Any]] | None,  # pyright: ignore[reportExplicitAny]
+        dialect: Dialect,
+    ) -> list[T] | None:
         if value is None:
             return None
-        data = json.loads(value)
-        return [KeyDataItem.model_validate(item) for item in data]
+        return [self._model_class.model_validate(item) for item in value]
 
 
-class JsonPydanticModel(TypeDecorator, Generic[T]):
+@final
+class JsonPydanticModel[T: BaseModel](TypeDecorator[T]):
     """泛型 JSON 序列化的 Pydantic 模型类型。
 
-    用于存储任意 Pydantic BaseModel，在数据库中以 JSON 字符串形式保存。
+    用于存储任意 Pydantic BaseModel，在数据库中以 JSON 形式保存。
     序列化使用 model_dump()，反序列化使用 model_validate()。
 
     使用方式：
-    - 具体类型：直接继承此类并指定 T
-    - 或使用 `JsonChunkSummaryOutput` 具体类
+    - 具体类型：直接用 Pydantic BaseModel 实例化此类
     """
 
-    impl = Text
+    impl = JSON
     cache_ok = True
-    _model_class: type | None = None
+    _model_class: type[T]
 
-    def __init__(self, model_class: type[T] | None = None, *args: object, **kwargs: object):
-        """初始化时可选传入模型类。"""
-        super().__init__(*args, **kwargs)
-        if model_class is not None:
-            self._model_class = model_class
+    def __init__(self, model_class: type[T]) -> None:
+        """
+        初始化时传入 Pydantic BaseModel
+        """
+        super().__init__()
+        self._model_class = model_class
 
-    def __init_subclass__(cls, **kwargs: object) -> None:
-        super().__init_subclass__(**kwargs)
-        # 捕获第一个类型参数（如果有）
-
-    @property
-    def model_class(self) -> type:
-        """获取要处理的 Pydantic 模型类。"""
-        if self._model_class is not None:
-            return self._model_class
-        # 如果没有设置，尝试从类继承获取
-        for base in type(self).__mro__:
-            if hasattr(base, "__orig_bases__"):
-                for orig in base.__orig_bases__:
-                    if hasattr(orig, "__origin__") and orig.__origin__ is JsonPydanticModel:
-                        args = getattr(orig, "__args__", ())
-                        if args:
-                            return args[0]
-        raise ValueError(f"Cannot determine model class for {type(self)}")
-
-    def process_bind_param(self, value: T | None, dialect) -> str | None:
+    @override
+    def process_bind_param(
+        self, value: T | None, dialect: Dialect
+    ) -> dict[str, Any] | None:  # pyright: ignore[reportExplicitAny]
         if value is None:
             return None
-        return value.model_dump_json(ensure_ascii=False)
+        return value.model_dump(mode="json")
 
-    def process_result_value(self, value: str | None, dialect) -> T | None:
+    @override
+    def process_result_value(
+        self,
+        value: dict[str, Any] | None,  # pyright: ignore[reportExplicitAny]
+        dialect: Dialect,
+    ) -> T | None:
         if value is None:
             return None
         # 使用运行时获取的模型类进行验证
-        model_class = self.model_class
-        return model_class.model_validate_json(value)
+        return self._model_class.model_validate(value)
 
 
-# 具体实现：ChunkSummaryOutput 类型
-class JsonChunkSummaryOutput(JsonPydanticModel[ChunkSummaryOutput]):
-    """用于 ChunkSummaryOutput 的具体 TypeDecorator。"""
+def _coerce_value(annotation: type, value: Any) -> Any:  # pyright: ignore[reportAny, reportExplicitAny]
+    """
+    根据目标的类型标注，将Json值还原为正确的Python类型
+    """
+    if value is None:
+        return None
+    origin = get_origin(annotation)
+    if origin is tuple:
+        args = get_args(annotation)
+        if not args:
+            # tuple 无参
+            return tuple(value)  # pyright: ignore[reportAny]
+        if len(args) == 2 and args[1] is Ellipsis:
+            # tuple[X, ...] 单一类型
+            return tuple(_coerce_value(args[0], v) for v in value)  # pyright: ignore[reportAny]
+        # tuple[X, Y, Z] 每个元素与其类型单独走还原
+        return tuple(_coerce_value(t, v) for t, v in zip(args, value, strict=True))  # pyright: ignore[reportAny]
+    if origin is list:
+        # list[X] 单一类型，每个元素单独走还原
+        (item_type,) = get_args(annotation)  # pyright: ignore[reportAny]
+        return [_coerce_value(item_type, v) for v in value]  # pyright: ignore[reportAny]
 
-    _model_class = ChunkSummaryOutput
+    if is_dataclass(annotation) and isinstance(value, dict):
+        # dataclass嵌套
+        return _reconstruct_dataclass(annotation, value)  # pyright: ignore[reportUnknownArgumentType]
+    # 其余类型直接返回
+    return value  # pyright: ignore[reportAny]
+
+
+def _reconstruct_dataclass[T: DataclassInstance](
+    dc: type[T],
+    data: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+) -> T:
+    """
+    将一个Json反序列化的产物 data: dict 还原成目标 dc 类型的实例
+
+    """
+    resolved = get_type_hints(dc)
+    kwargs = {}
+    for name, val in data.items():  # pyright: ignore[reportAny]
+        if name in resolved:
+            kwargs[name] = _coerce_value(resolved[name], val)  # pyright: ignore[reportAny]
+        else:
+            kwargs[name] = val
+
+    return dc(**kwargs)
+
+
+@overload
+def json_pydantic[T: BaseModel](typ: type[T]) -> JsonPydanticModel[T]: ...
+
+
+@overload
+def json_pydantic[T: BaseModel](typ: type[list[T]]) -> JsonPydanticModelList[T]: ...
+
+
+def json_pydantic(typ: Any) -> Any:  # pyright: ignore[reportExplicitAny, reportAny]
+    origin = get_origin(typ)  # pyright: ignore[reportAny]
+    if origin is list:
+        (item_type,) = get_args(typ)  # pyright: ignore[reportAny]
+        if not (isinstance(item_type, type) and issubclass(item_type, BaseModel)):
+            raise TypeError(f"Expected list[BaseModelSubclass], got {typ!r}")
+        return JsonPydanticModelList(item_type)
+    if not (isinstance(typ, type) and issubclass(typ, BaseModel)):
+        raise TypeError(f"Expected BaseModel subclass, got {typ!r}")
+    return JsonPydanticModel(typ)
+
+
+@overload
+def json_dataclass[T: DataclassInstance](typ: type[T]) -> JsonDataclass[T]: ...
+
+
+@overload
+def json_dataclass[T: DataclassInstance](
+    typ: type[list[T]],
+) -> JsonDataclassList[T]: ...
+
+
+def json_dataclass(typ: Any) -> Any:  # pyright: ignore[reportAny, reportExplicitAny]
+    origin = get_origin(typ)  # pyright: ignore[reportAny]
+    if origin is list:
+        (item_type,) = get_args(typ)  # pyright: ignore[reportAny]
+        if not is_dataclass(item_type):  # pyright: ignore[reportAny]
+            raise TypeError(f"Expected list[dataclass], got {typ!r}")
+        return JsonDataclassList(cast(type[DataclassInstance], item_type))
+    if not is_dataclass(typ):  # pyright: ignore[reportAny]
+        raise TypeError(f"Expected dataclass, got {typ!r}")
+    return JsonDataclass(cast(type[DataclassInstance], typ))

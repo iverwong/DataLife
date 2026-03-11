@@ -20,7 +20,7 @@ def _get_encoder() -> tiktoken.Encoding:
     Returns:
         tiktoken.Encoding 实例。
     """
-    global _encoder  # noqa: PLW0603
+    global _encoder  
     if _encoder is None:
         _encoder = tiktoken.get_encoding(_ENCODING_NAME)
     return _encoder

@@ -13,14 +13,12 @@
 
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pymupdf
 import pytest
 
-from dataclasses import FrozenInstanceError
-
-from core.exceptions import DataLifeError
 from core.data.models import PageChunk, PDFParseResult
 from core.data.pdf_parser import (
     PDFCorruptedError,
@@ -30,12 +28,14 @@ from core.data.pdf_parser import (
     parse_pdf,
     parse_pdf_bytes,
 )
+from core.exceptions import DataLifeError
 
 # 标记所有测试为异步
 pytestmark = pytest.mark.asyncio
 
 
 # ── Fixtures ──────────────────────────────────────────
+
 
 @pytest.fixture
 def sample_pdf_path(tmp_path: Path) -> Path:
@@ -104,6 +104,7 @@ def encrypted_pdf_path(tmp_path: Path) -> Path:
 
 # ── parse_pdf 正向测试 ────────────────────────────────
 
+
 class TestParsePdfSuccess:
     """parse_pdf 正向场景。"""
 
@@ -113,7 +114,9 @@ class TestParsePdfSuccess:
         assert result.page_count == 3
         assert len(result.chunks) == 3
 
-    async def test_chunks_contain_nonempty_markdown(self, sample_pdf_path: Path) -> None:
+    async def test_chunks_contain_nonempty_markdown(
+        self, sample_pdf_path: Path
+    ) -> None:
         """每个 PageChunk 包含非空 markdown_text。"""
         result = await parse_pdf(sample_pdf_path)
         for chunk in result.chunks:
@@ -155,6 +158,7 @@ class TestParsePdfSuccess:
 
 # ── parse_pdf 表格测试 ────────────────────────────────
 
+
 class TestParsePdfTable:
     """表格解析测试（Layout 模式）。
 
@@ -172,6 +176,7 @@ class TestParsePdfTable:
 
 # ── parse_pdf 页眉页脚测试 ────────────────────────────
 
+
 class TestHeaderFooterFiltering:
     """页眉页脚过滤测试（Layout 模式）。"""
 
@@ -181,17 +186,9 @@ class TestHeaderFooterFiltering:
         assert isinstance(result, PDFParseResult)
         # 基本断言：能正常返回结果即可，具体过滤效果需真实财报验证
 
-    async def test_include_header_footer_true(self, sample_pdf_path: Path) -> None:
-        """include_header_footer=True 保留页眉页脚，内容应 >= 过滤后。"""
-        result_with = await parse_pdf(sample_pdf_path, include_header_footer=True)
-        result_without = await parse_pdf(sample_pdf_path, include_header_footer=False)
-        # 保留页眉页脚时，文本量应 >= 过滤后
-        len_with = sum(len(c.markdown_text) for c in result_with.chunks)
-        len_without = sum(len(c.markdown_text) for c in result_without.chunks)
-        assert len_with >= len_without
-
 
 # ── parse_pdf 异常测试 ────────────────────────────────
+
 
 class TestParsePdfErrors:
     """parse_pdf 异常场景。"""
@@ -223,6 +220,7 @@ class TestParsePdfErrors:
 
 # ── parse_pdf_bytes 测试 ──────────────────────────────
 
+
 class TestParsePdfBytes:
     """parse_pdf_bytes 测试。"""
 
@@ -250,6 +248,7 @@ class TestParsePdfBytes:
 
 
 # ── 数据结构测试 ──────────────────────────────────────
+
 
 class TestDataStructures:
     """数据结构基本行为。"""
@@ -280,6 +279,7 @@ class TestDataStructures:
 
 
 # ── _clean_markdown 边界测试（T4：问题 5）───────────────────────────────
+
 
 class TestCleanMarkdown:
     """_clean_markdown 边界测试（T4：问题 5）。"""

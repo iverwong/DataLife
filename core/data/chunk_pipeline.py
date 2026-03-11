@@ -13,6 +13,7 @@ from core.data.chapter_detector import detect_chapters
 from core.data.chunk_storage import save_chunks
 from core.data.chunker import build_chunks
 from core.data.models import ChunkList, ParsedDocument
+from core.data.token_counter import count_tokens
 
 
 async def chunk_document(
@@ -45,10 +46,17 @@ async def chunk_document(
     """
     doc: pymupdf.Document | None = None
     try:
-        # Step 1: 打开 PDF 获取书签等原始信息
+        # Step 1: 打开 PDF
         doc = pymupdf.open(stream=content, filetype="pdf")
 
-        # Step 2: 调用章节识别（多级降级）
+        # Step 2: 直通检查（整体长度小于3倍max_token的直接拆分）
+        perid = count_tokens(parsed.full_text) // max_tokens
+        if perid < 3:
+            # 按max_token截断
+
+            pass
+
+        # Step 3: 调用章节识别（多级降级）
         logfire.debug(
             "开始章节识别: source={source}, pages={page_count}",
             source=parsed.source,
@@ -61,7 +69,8 @@ async def chunk_document(
             source=parsed.source,
         )
 
-        # Step 3: 调用分块引擎产出 ChunkList
+        # FIX 这部分的逻辑没有检查的，感觉有问题
+        # Step 4: 调用分块引擎产出 ChunkList
         chunk_list = build_chunks(parsed, chapters, max_tokens=max_tokens)
         logfire.info(
             "分块完成: source={source}, chunk_count={chunk_count}, total_tokens={total_tokens}, chapter_count={chapter_count}",
@@ -71,7 +80,7 @@ async def chunk_document(
             chapter_count=chunk_list.chapter_count,
         )
 
-        # Step 4: 可选持久化
+        # Step 5: 持久化
         if persist and stock_code and report_date:
             await save_chunks(
                 chunk_list,

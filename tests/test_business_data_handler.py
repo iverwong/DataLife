@@ -5,16 +5,16 @@ Test Categories:
     - Integration tests: 测试完整流程，使用真实调用
 """
 
-import pytest
+from datetime import date
 from unittest.mock import AsyncMock, patch
-from datetime import datetime, date
+
+import pytest
 from pandas import DataFrame
 
+from core.db import HashContentWithHash
 from core.models import NotionDate
 from core.notion.stock_pool import StockPool
-from core.db import HashContentWithHash
-from tests.resource.manager import load_resource, ResourceType
-
+from tests.resource.manager import load_resource
 
 # 标记所有测试为异步
 pytestmark = pytest.mark.asyncio
@@ -80,8 +80,9 @@ class TestShouldUpdateHalfYear:
         预期结果：
             - 返回False，表示不需要更新
         """
-        from core.handlers.business import _should_update_half_year
         from freezegun import freeze_time
+
+        from core.handlers.business import _should_update_half_year
 
         with freeze_time("2024-08-01"):
             result = _should_update_half_year(NotionDate("2024-06-30"))
@@ -101,9 +102,10 @@ class TestShouldUpdateHalfYear:
         预期结果：
             - 返回True，表示需要更新
         """
+        from freezegun import freeze_time
+
         from core.handlers.business import _should_update_half_year
         from core.models import NotionDate
-        from freezegun import freeze_time
 
         with freeze_time("2025-01-01"):
             result = _should_update_half_year(NotionDate("2024-06-30"))
@@ -121,8 +123,9 @@ class TestShouldUpdateHalfYear:
         预期结果：
             - 返回False，表示不需要更新
         """
-        from core.handlers.business import _should_update_half_year
         from freezegun import freeze_time
+
+        from core.handlers.business import _should_update_half_year
 
         with freeze_time("2025-03-01"):
             result = _should_update_half_year(NotionDate("2024-12-31"))
@@ -142,9 +145,10 @@ class TestShouldUpdateHalfYear:
         预期结果：
             - 返回True，表示需要更新
         """
+        from freezegun import freeze_time
+
         from core.handlers.business import _should_update_half_year
         from core.models import NotionDate
-        from freezegun import freeze_time
 
         with freeze_time("2025-07-01"):
             result = _should_update_half_year(NotionDate("2024-12-31"))
@@ -261,9 +265,7 @@ class TestProcessBusinessDataForStockList:
                 new_callable=AsyncMock,
                 return_value=mock_update_times,
             ),
-            patch(
-                "core.handlers.business._should_update_half_year", return_value=True
-            ),
+            patch("core.handlers.business._should_update_half_year", return_value=True),
             patch(
                 "akshare.stock_zygc_em",
                 return_value=mock_akshare_response,
@@ -318,9 +320,7 @@ class TestProcessBusinessDataForStockList:
                 new_callable=AsyncMock,
                 return_value=mock_update_times,
             ),
-            patch(
-                "core.handlers.business._should_update_half_year", return_value=True
-            ),
+            patch("core.handlers.business._should_update_half_year", return_value=True),
             patch(
                 "akshare.stock_zygc_em",
                 return_value=mock_akshare_response,
@@ -391,9 +391,7 @@ class TestProcessBusinessDataForStockList:
                 new_callable=AsyncMock,
                 return_value=mock_update_times,
             ),
-            patch(
-                "core.handlers.business._should_update_half_year", return_value=True
-            ),
+            patch("core.handlers.business._should_update_half_year", return_value=True),
             patch(
                 "akshare.stock_zygc_em",
                 return_value=mock_akshare_response,
@@ -454,9 +452,7 @@ class TestProcessBusinessDataForStockList:
                 new_callable=AsyncMock,
                 return_value=mock_update_times,
             ),
-            patch(
-                "core.handlers.business._should_update_half_year", return_value=True
-            ),
+            patch("core.handlers.business._should_update_half_year", return_value=True),
             patch(
                 "akshare.stock_zygc_em",
                 side_effect=Exception("API error"),

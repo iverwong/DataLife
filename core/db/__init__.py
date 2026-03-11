@@ -8,7 +8,8 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from typing import cast
+from typing import  cast
+from collections.abc import Sequence
 
 import xxhash
 from sqlalchemy import select
@@ -105,7 +106,7 @@ async def check_hash(data_list: list[HashContent]) -> list[HashContentWithHash]:
     return [h for h in hash_contents if h.hash_value not in existing_hashes]
 
 
-async def save_hash(data_list: list[str | HashContent]) -> None:
+async def save_hash(data_list: Sequence[str | HashContent]) -> None:
     """将哈希值批量保存到数据库中。
 
     使用 session.add_all() 批量插入 HashRecord。
