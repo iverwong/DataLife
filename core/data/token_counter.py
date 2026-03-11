@@ -67,4 +67,28 @@ def slice_tokens(text: str, start: int, length: int) -> str:
     Returns:
         截取后的文本。
     """
-    raise NotImplementedError
+    # 边界条件处理
+    if not text:
+        return ""
+    if length <= 0:
+        return ""
+
+    encoder = _get_encoder()
+    tokens: list[int] = encoder.encode(text)
+    total_tokens = len(tokens)
+
+    if start >= total_tokens:
+        return ""
+
+    # 修正负数 start
+    if start < 0:
+        start = 0
+
+    # 处理超出范围的情况：截取到末尾
+    end = start + length
+    if end > total_tokens:
+        end = total_tokens
+
+    # 切片并解码
+    sliced_tokens = tokens[start:end]
+    return encoder.decode(sliced_tokens)
