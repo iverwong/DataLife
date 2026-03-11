@@ -39,7 +39,26 @@ def _build_bypass_chunk_list(
     Returns:
         ChunkList 对象。
     """
-    raise NotImplementedError
+    chunks: list[Chunk] = []
+    for seg in segments:
+        chunk = Chunk(
+            text=seg.text,
+            chapter_path=[],
+            page_range=(1, parsed.page_count),
+            token_count=seg.token_count,
+            chunk_type=ChunkType.TOKEN_WINDOW,
+        )
+        chunks.append(chunk)
+
+    # 计算总 token 数
+    total_tokens = sum(c.token_count for c in chunks)
+
+    return ChunkList(
+        source=parsed.source,
+        chunks=chunks,
+        total_tokens=total_tokens,
+        chapter_count=0,  # 直通路径不识别章节
+    )
 
 
 async def chunk_document(
@@ -76,11 +95,37 @@ async def chunk_document(
         doc = pymupdf.open(stream=content, filetype="pdf")
 
         # Step 2: 直通检查（整体长度小于3倍max_token的直接拆分）
-        perid = count_tokens(parsed.full_text) // max_tokens
-        if perid < 3:
-            # 按max_token截断
+        total_tokens = count_tokens(parsed.full_text)
+        if total_tokens < BYPASS_THRESHOLD_FACTOR * max_tokens:
+            # 直通路径：按最大窗口拆分，跳过章节识别
+            segments = split_text_by_token_window(
+                text=parsed.full_text,
+                max_tokens=max_tokens,
+                overlap_tokens=200,  # 使用默认 overlap
+            )
+            chunk_list = _build_bypass_chunk_list(
+                parsed=parsed,
+                segments=segments,
+                overlap_tokens=200,
+            )
 
-            pass
+            # 记录日志
+            logfire.info(
+                "直通路径: source={source}, total_tokens={total}, segments={count}",
+                source=parsed.source,
+                total=total_tokens,
+                count=len(segments),
+            )
+
+            # 执行持久化（如果需要）
+            if persist and stock_code and report_date:
+                await save_chunks(
+                    chunk_list,
+                    stock_code=stock_code,
+                    report_date=report_date,
+                )
+
+            return chunk_list
 
         # Step 3: 调用章节识别（多级降级）
         logfire.debug(
