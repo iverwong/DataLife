@@ -41,7 +41,7 @@ class TestChunkPipelineBypass:
     async def test_bypass_triggered_under_3x(self):
         """文档 token 数 < 3 * max_tokens 时应走直通路径，跳过章节识别。
 
-        fixture 设计：max_tokens=100, 文档约 200 tokens (< 300)
+        fixture 设计：max_tokens=100, overlap_tokens=20, 文档约 200 tokens (< 300)
         """
         from core.data.chunk_pipeline import chunk_document
 
@@ -51,7 +51,7 @@ class TestChunkPipelineBypass:
             mock_doc = mock_pymupdf.open.return_value
             mock_doc.close = lambda: None
             result = await chunk_document(
-                content, parsed, max_tokens=100, persist=False
+                content, parsed, max_tokens=100, overlap_tokens=20, persist=False
             )
             # 直通路径不应调用 detect_chapters
             mock_detect.assert_not_called()
@@ -63,7 +63,7 @@ class TestChunkPipelineBypass:
     async def test_bypass_not_triggered_over_3x(self):
         """文档 token 数 >= 3 * max_tokens 时应走正常章节识别路径。
 
-        fixture 设计：max_tokens=100, 文档约 400 tokens (>= 300)
+        fixture 设计：max_tokens=100, overlap_tokens=20, 文档约 400 tokens (>= 300)
         """
         from core.data.chunk_pipeline import chunk_document
 
@@ -77,7 +77,7 @@ class TestChunkPipelineBypass:
                 source=parsed.source, chunks=[], total_tokens=0, chapter_count=0
             )
             await chunk_document(
-                content, parsed, max_tokens=100, persist=False
+                content, parsed, max_tokens=100, overlap_tokens=20, persist=False
             )
             # 正常路径应调用 detect_chapters
             mock_detect.assert_called_once()
@@ -104,7 +104,7 @@ class TestChunkPipelineBypass:
     async def test_bypass_chunks_cover_full_text(self):
         """直通路径产出的 chunks 应覆盖全文（无内容丢失）。
 
-        fixture 设计：max_tokens=100, 文档约 250 tokens, overlap=20
+        fixture 设计：max_tokens=100, overlap_tokens=20, 文档约 250 tokens
         验证：所有 chunk 文本去除 overlap 后拼接 = 原始 full_text
         """
         from core.data.chunk_pipeline import chunk_document
@@ -114,7 +114,7 @@ class TestChunkPipelineBypass:
             mock_doc = mock_pymupdf.open.return_value
             mock_doc.close = lambda: None
             result = await chunk_document(
-                content, parsed, max_tokens=100, persist=False
+                content, parsed, max_tokens=100, overlap_tokens=20, persist=False
             )
             # 所有 chunk 的 token 数之和（含 overlap）应 >= 原始 token 数
             total_original = count_tokens(parsed.full_text)
