@@ -18,12 +18,15 @@ from core.data.token_counter import count_tokens
 # 直通阈值倍数
 BYPASS_THRESHOLD_FACTOR: int = 3
 
+# overlap重叠token数
+OVERLAP_TOKENS = 200
+
+# 单个 Chunk 的最大 token 数
+DEFAULT_MAX_TOKENS: int = 8000
+
 
 def _build_bypass_chunk_list(
-    parsed: ParsedDocument,
-    segments: list[TextSegment],
-    *,
-    overlap_tokens: int,
+    parsed: ParsedDocument, segments: list[TextSegment]
 ) -> ChunkList:
     """将 TextSegment 列表包装为 ChunkList（直通路径专用）。
 
@@ -67,7 +70,7 @@ async def chunk_document(
     *,
     stock_code: str = "",
     report_date: str = "",
-    max_tokens: int = 8000,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
     persist: bool = True,
 ) -> ChunkList:
     """对已解析的文档执行逻辑分块。
@@ -101,12 +104,12 @@ async def chunk_document(
             segments = split_text_by_token_window(
                 text=parsed.full_text,
                 max_tokens=max_tokens,
-                overlap_tokens=200,  # 使用默认 overlap
+                overlap_tokens=OVERLAP_TOKENS,  # 使用默认 overlap
+                total_tokens=total_tokens,
             )
             chunk_list = _build_bypass_chunk_list(
                 parsed=parsed,
                 segments=segments,
-                overlap_tokens=200,
             )
 
             # 记录日志
@@ -140,9 +143,13 @@ async def chunk_document(
             source=parsed.source,
         )
 
-        # FIX 这部分的逻辑没有检查的，感觉有问题
         # Step 4: 调用分块引擎产出 ChunkList
-        chunk_list = build_chunks(parsed, chapters, max_tokens=max_tokens)
+        chunk_list = build_chunks(
+            parsed,
+            chapters,
+            max_tokens=DEFAULT_MAX_TOKENS,
+            overlap_tokens=OVERLAP_TOKENS,
+        )
         logfire.info(
             "分块完成: source={source}, chunk_count={chunk_count}, total_tokens={total_tokens}, chapter_count={chapter_count}",
             source=parsed.source,

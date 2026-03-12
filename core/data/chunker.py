@@ -29,15 +29,6 @@ from core.data.token_counter import (
     slice_tokens,
 )
 
-# ── 常量 ──────────────────────────────────────────────────────────────
-DEFAULT_MAX_TOKENS: int = 8000
-"""单个 Chunk 的最大 token 数（DeepSeek 有效摘要窗口）。
-可通过 chunk_document(max_tokens=...) 或 build_chunks(max_tokens=...) 参数覆盖。
-建议根据实际 DeepSeek 摘要质量测试结果调整此默认值。"""
-
-OVERLAP_TOKENS: int = 200
-"""子块拆分时的 overlap token 数。"""
-
 
 @final
 class ChunkBuilder:
@@ -69,9 +60,8 @@ class ChunkBuilder:
 def build_chunks(
     parsed: ParsedDocument,
     chapters: list[ChapterBoundary],
-    *,
-    max_tokens: int = DEFAULT_MAX_TOKENS,
-    overlap_tokens: int = OVERLAP_TOKENS,
+    max_tokens: int,
+    overlap_tokens: int,
 ) -> ChunkList:
     """根据章节边界将文档切分为 ChunkList。
 
@@ -100,40 +90,12 @@ def build_chunks(
     Returns:
         ChunkList 对象。
     """
-    # Step 0: 整体直通检查（同页合并后只有1个章节 且 全文 <= max_tokens）
-    full_text = parsed.full_text
 
     # 先做同页合并
     level1_chapters = [c for c in chapters if c.level == 1]
     if not level1_chapters:
         level1_chapters = chapters
     merged_chapters = _merge_same_page_boundaries(level1_chapters)
-
-    # 只有当同页合并后只有1个章节 且 全文 <= max_tokens 时才整体直通
-    if len(merged_chapters) == 1 and count_tokens(full_text) <= max_tokens:
-        contained = [
-            ChunkMeta(
-                title=c.title,
-                level=c.level,
-                page_range=(c.start_page, c.end_page),
-            )
-            for c in level1_chapters
-        ]
-        chunk = ChunkBuilder.create_chunk(
-            text=full_text,
-            chapter_path=[],
-            page_range=(1, parsed.page_count),
-            chunk_type=ChunkType.COMPLETE_CHAPTER,
-            chunk_index=0,
-            needs_prior_summary=False,
-            contained_chapters=contained,
-        )
-        return ChunkList(
-            source=parsed.source,
-            chunks=[chunk],
-            total_tokens=chunk.token_count,
-            chapter_count=len(level1_chapters) or 1,
-        )
 
     # Step 2 & 3: 遍历章节处理
     chunks: list[Chunk] = []
@@ -275,30 +237,27 @@ def _merge_same_page_boundaries(
     if not boundaries:
         return []
 
-    # 按 start_page 排序
-    sorted_boundaries = sorted(boundaries, key=lambda b: b.start_page)
-
     result: list[MergedChapter] = []
-    current_originals: list[ChapterBoundary] = [sorted_boundaries[0]]
+    current_originals: list[ChapterBoundary] = [boundaries[0]]
 
-    for next_boundary in sorted_boundaries[1:]:
+    for next_boundary in boundaries[1:]:
         # 检查是否共享同一页面
         current = current_originals[0]
         if (
-            current.start_page == current.end_page
-            and next_boundary.start_page == next_boundary.end_page
+            current.start_page
+            == current.end_page
+            == next_boundary.start_page
+            == next_boundary.end_page
         ):
-            if current.start_page == next_boundary.start_page:
-                # 合并
-                current_originals.append(next_boundary)
-                continue
+            current_originals.append(next_boundary)
+            continue
 
         # 不合并，保存当前并开始新的
         merged_chapter = ChapterBoundary(
             title=" / ".join(c.title for c in current_originals),
             level=min(c.level for c in current_originals),
             start_page=current_originals[0].start_page,
-            end_page=max(c.end_page for c in current_originals),
+            end_page=current_originals[0].end_page,
             source=current_originals[0].source,
         )
         result.append(
@@ -312,8 +271,8 @@ def _merge_same_page_boundaries(
         merged_chapter = ChapterBoundary(
             title=" / ".join(c.title for c in current_originals),
             level=min(c.level for c in current_originals),
-            start_page=current_originals[0].start_page,
-            end_page=max(c.end_page for c in current_originals),
+            start_page=current.start_page,
+            end_page=current.start_page,
             source=current_originals[0].source,
         )
         result.append(
@@ -580,9 +539,7 @@ def _split_by_token_window(
 
 
 def split_text_by_token_window(
-    text: str,
-    max_tokens: int,
-    overlap_tokens: int = 0,
+    text: str, max_tokens: int, overlap_tokens: int = 0, total_tokens: int | None = None
 ) -> list[TextSegment]:
     """将文本按 token 窗口拆分为多个 TextSegment，保证无内容丢失。
 
@@ -606,6 +563,7 @@ def split_text_by_token_window(
         text: 待拆分的文本。
         max_tokens: 每个窗口的最大 token 数。
         overlap_tokens: 相邻窗口的重叠 token 数。
+        total_tokens: 带拆分文本的token总数，如传入则函数内不再重复计算。
 
     Returns:
         TextSegment 列表，按文本顺序排列。
@@ -622,7 +580,7 @@ def split_text_by_token_window(
     if overlap_tokens >= max_tokens:
         overlap_tokens = 0
 
-    total_tokens = count_tokens(text)
+    total_tokens = total_tokens or count_tokens(text)
 
     # 如果文本可以直接在一个窗口内放下
     if total_tokens <= max_tokens:

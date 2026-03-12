@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import tiktoken
 
-
 # 使用 cl100k_base 编码，兼容 GPT-4 / DeepSeek 等主流模型
 _ENCODING_NAME: str = "cl100k_base"
 _encoder: tiktoken.Encoding | None = None
@@ -20,7 +19,7 @@ def _get_encoder() -> tiktoken.Encoding:
     Returns:
         tiktoken.Encoding 实例。
     """
-    global _encoder  
+    global _encoder
     if _encoder is None:
         _encoder = tiktoken.get_encoding(_ENCODING_NAME)
     return _encoder
