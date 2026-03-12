@@ -125,26 +125,6 @@ class ChunkList:
 
 
 @dataclass(frozen=True)
-class TextSegment:
-    """纯文本分段结果。
-
-    不含 Chunk 构建所需的章节路径、页码范围等上下文，
-    仅用于文本级别的 token 窗口拆分。
-
-    Attributes:
-        text: 分段文本内容。
-        token_count: 该段的 token 数。
-        start_token: 在原始文本中的起始 token 索引（0-based）。
-        is_last: 是否为最后一个分段。
-    """
-
-    text: str
-    token_count: int
-    start_token: int
-    is_last: bool = False
-
-
-@dataclass(frozen=True)
 class PageChunk:
     """单页解析结果。
 

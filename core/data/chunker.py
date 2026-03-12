@@ -14,7 +14,6 @@ from __future__ import annotations
 import re
 from typing import final
 
-from core.data.exceptions import InvalidChunkingParameterError
 from core.data.models import (
     ChapterBoundary,
     Chunk,
@@ -23,7 +22,6 @@ from core.data.models import (
     ChunkType,
     MergedChapter,
     ParsedDocument,
-    TextSegment,
 )
 from core.data.token_counter import (
     count_tokens,
@@ -524,8 +522,7 @@ def _split_by_token_window(
     """按 token 窗口 + overlap 切分文本。
 
     如果传入 token_index，使用 slice_window_from_index 从 token ID 池切窗口；
-    否则调用 split_text_by_token_window 获取无损的 TextSegment 列表，
-    然后将每个 TextSegment 包装为 Chunk。
+    否则使用简单的滑动窗口逻辑。
 
     Args:
         text: 待切分的 Markdown 文本。
@@ -538,7 +535,6 @@ def _split_by_token_window(
     Returns:
         Chunk 列表（至少一个元素）。
     """
-    # 如果有 token_index，使用零成本切分
     if token_index is not None:
         return _split_by_token_window_with_index(
             text=text,
@@ -549,17 +545,13 @@ def _split_by_token_window(
             token_index=token_index,
         )
 
-    # 否则使用原有逻辑
-    # 调用 split_text_by_token_window 获取无损的 TextSegment 列表
-    # 调用 split_text_by_token_window 获取无损的 TextSegment 列表
-    segments = split_text_by_token_window(text, max_tokens, overlap_tokens)
-
-    if not segments:
-        # 降级：空文本或无效参数，返回单个截断 chunk
-        truncated = slice_tokens(text, 0, max_tokens) if text else ""
+    # 降级逻辑：使用简单的滑动窗口
+    total = count_tokens(text)
+    if total <= max_tokens:
+        # 文本可以直接放下
         return [
             ChunkBuilder.create_chunk(
-                text=truncated,
+                text=text,
                 chapter_path=chapter_path,
                 page_range=page_range,
                 chunk_type=ChunkType.TOKEN_WINDOW,
@@ -568,22 +560,41 @@ def _split_by_token_window(
             )
         ]
 
-    # 将每个 TextSegment 包装为 Chunk
+    # 滑动窗口拆分
     chunks: list[Chunk] = []
+    step = max_tokens - overlap_tokens
+    start = 0
+    chunk_idx = 0
 
-    for i, segment in enumerate(segments):
-        # 第一个 chunk：直接使用 TextSegment.text
-        # 后续 chunk：split_text_by_token_window 已经包含了 overlap，
-        # 每个 segment 的 text 已经包含了从前一个 segment 尾部的内容
-        # 所以直接使用 segment.text 即可
+    while start < total:
+        end = min(start + max_tokens, total)
+        window_text = slice_tokens(text, start, end - start)
+
+        if window_text:
+            chunks.append(
+                ChunkBuilder.create_chunk(
+                    text=window_text,
+                    chapter_path=chapter_path,
+                    page_range=page_range,
+                    chunk_type=ChunkType.TOKEN_WINDOW,
+                    chunk_index=chunk_idx,
+                    needs_prior_summary=chunk_idx > 0,
+                )
+            )
+            chunk_idx += 1
+
+        start += step
+
+    # 确保至少返回一个 chunk
+    if not chunks:
         chunks.append(
             ChunkBuilder.create_chunk(
-                text=segment.text,
+                text=text[:1000] if text else "",
                 chapter_path=chapter_path,
                 page_range=page_range,
                 chunk_type=ChunkType.TOKEN_WINDOW,
-                chunk_index=i,
-                needs_prior_summary=i > 0,  # 第一个 chunk 不需要前置摘要
+                chunk_index=0,
+                needs_prior_summary=False,
             )
         )
 
@@ -629,21 +640,19 @@ def _split_by_token_window_with_index(
             length=max_tokens,
         )
 
-        # 如果窗口文本为空，降级到原有逻辑
+        # 如果窗口文本为空，降级到截断处理
         if not window_text:
-            # 降级：使用原有逻辑处理剩余内容
-            remaining_segments = split_text_by_token_window(
-                text, max_tokens, overlap_tokens
-            )
-            for j, segment in enumerate(remaining_segments):
+            # 降级：截取剩余文本
+            remaining_text = slice_tokens(text, start, max_tokens)
+            if remaining_text:
                 chunks.append(
                     ChunkBuilder.create_chunk(
-                        text=segment.text,
+                        text=remaining_text,
                         chapter_path=chapter_path,
                         page_range=page_range,
                         chunk_type=ChunkType.TOKEN_WINDOW,
-                        chunk_index=j,
-                        needs_prior_summary=j > 0,
+                        chunk_index=len(chunks),
+                        needs_prior_summary=len(chunks) > 0,
                     )
                 )
             break
@@ -678,91 +687,3 @@ def _split_by_token_window_with_index(
         )
 
     return chunks
-
-
-def split_text_by_token_window(
-    text: str, max_tokens: int, overlap_tokens: int = 0, total_tokens: int | None = None
-) -> list[TextSegment]:
-    """将文本按 token 窗口拆分为多个 TextSegment，保证无内容丢失。
-
-    使用 slice_tokens 实现精确的滑动窗口，每个窗口包含 max_tokens 个 token，
-    相邻窗口之间有 overlap_tokens 个 token 的重叠。
-
-    算法：
-    1. 计算总 token 数
-    2. 若总量 <= max_tokens，直接返回单个 TextSegment
-    3. 否则，从 start=0 开始，步长为 max_tokens - overlap_tokens，
-       循环调用 slice_tokens(text, start, max_tokens) 产出 TextSegment
-    4. 确保最后一个 TextSegment 覆盖到文本末尾
-
-    降级行为：
-    - text 为空: 返回空列表
-    - max_tokens <= 0: 返回空列表
-    - overlap_tokens >= max_tokens: 抛出 InvalidChunkingParameterError
-    - overlap_tokens < 0: 自动修正为 0
-
-    Args:
-        text: 待拆分的文本。
-        max_tokens: 每个窗口的最大 token 数。
-        overlap_tokens: 相邻窗口的重叠 token 数。
-        total_tokens: 带拆分文本的token总数，如传入则函数内不再重复计算。
-
-    Returns:
-        TextSegment 列表，按文本顺序排列。
-    """
-    # 降级处理
-    if not text:
-        return []
-    if max_tokens <= 0:
-        return []
-
-    # 修正 overlap_tokens
-    if overlap_tokens < 0:
-        overlap_tokens = 0
-    if overlap_tokens >= max_tokens:
-        raise InvalidChunkingParameterError(
-            f"overlap_tokens ({overlap_tokens}) must be less than max_tokens ({max_tokens})"
-        )
-
-    total_tokens = total_tokens or count_tokens(text)
-
-    # 如果文本可以直接在一个窗口内放下
-    if total_tokens <= max_tokens:
-        return [
-            TextSegment(
-                text=text,
-                token_count=total_tokens,
-                start_token=0,
-                is_last=True,
-            )
-        ]
-
-    # 滑动窗口拆分
-    result: list[TextSegment] = []
-    step = max_tokens - overlap_tokens
-    start = 0
-
-    while start < total_tokens:
-        # 计算当前窗口的结束位置
-        end = min(start + max_tokens, total_tokens)
-        window_token_count = end - start
-
-        # 使用 slice_tokens 获取窗口文本
-        window_text = slice_tokens(text, start, window_token_count)
-
-        # 判断是否为最后一个分段
-        is_last = end >= total_tokens
-
-        result.append(
-            TextSegment(
-                text=window_text,
-                token_count=window_token_count,
-                start_token=start,
-                is_last=is_last,
-            )
-        )
-
-        # 移动到下一个窗口起点
-        start += step
-
-    return result
