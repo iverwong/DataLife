@@ -15,6 +15,7 @@ from core.data.chunker import build_chunks
 from core.data.exceptions import InvalidChunkingParameterError
 from core.data.models import Chunk, ChunkList, ChunkType, ParsedDocument
 from core.data.token_indexer import (
+    PageTokenIndex,
     encode_pages_incremental,
     slice_window_from_index,
 )
@@ -133,7 +134,11 @@ async def chunk_document(
 
             return chunk_list
 
-        # Step 3: 调用章节识别（多级降级）
+        # Step 3: 全量编码（零成本 token 计数）
+        # 在正常路径（非 bypass）下，获取完整 token_index 供 chunker 使用
+        token_index: PageTokenIndex | None = encode_pages_incremental(parsed)
+
+        # Step 4: 调用章节识别（多级降级）
         logfire.debug(
             "开始章节识别: source={source}, pages={page_count}",
             source=parsed.source,
@@ -146,12 +151,13 @@ async def chunk_document(
             source=parsed.source,
         )
 
-        # Step 4: 调用分块引擎产出 ChunkList
+        # Step 5: 调用分块引擎产出 ChunkList
         chunk_list = build_chunks(
             parsed,
             chapters,
             max_tokens=max_tokens,
             overlap_tokens=overlap_tokens,
+            token_index=token_index,
         )
         logfire.info(
             "分块完成: source={source}, chunk_count={chunk_count}, total_tokens={total_tokens}, chapter_count={chapter_count}",
@@ -161,7 +167,7 @@ async def chunk_document(
             chapter_count=chunk_list.chapter_count,
         )
 
-        # Step 5: 持久化
+        # Step 6: 持久化
         if persist and stock_code and report_date:
             await save_chunks(
                 chunk_list,
