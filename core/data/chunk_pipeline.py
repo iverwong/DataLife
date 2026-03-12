@@ -11,9 +11,13 @@ import pymupdf
 
 from core.data.chapter_detector import detect_chapters
 from core.data.chunk_storage import save_chunks
-from core.data.chunker import build_chunks, split_text_by_token_window
-from core.data.models import Chunk, ChunkList, ChunkType, ParsedDocument, TextSegment
-from core.data.token_counter import count_tokens
+from core.data.chunker import build_chunks
+from core.data.exceptions import InvalidChunkingParameterError
+from core.data.models import Chunk, ChunkList, ChunkType, ParsedDocument
+from core.data.token_indexer import (
+    encode_pages_incremental,
+    slice_window_from_index,
+)
 
 # 直通阈值倍数
 BYPASS_THRESHOLD_FACTOR: int = 3
@@ -25,45 +29,6 @@ OVERLAP_TOKENS = 200
 DEFAULT_MAX_TOKENS: int = 8000
 
 
-def _build_bypass_chunk_list(
-    parsed: ParsedDocument, segments: list[TextSegment]
-) -> ChunkList:
-    """将 TextSegment 列表包装为 ChunkList（直通路径专用）。
-
-    每个 TextSegment 包装为一个 TOKEN_WINDOW 类型的 Chunk，
-    chapter_path 为空（交给 LLM 在摘要阶段识别章节），
-    page_range 覆盖整个文档。
-
-    Args:
-        parsed: 原始 ParsedDocument。
-        segments: split_text_by_token_window 产出的分段列表。
-        overlap_tokens: overlap token 数（用于日志）。
-
-    Returns:
-        ChunkList 对象。
-    """
-    chunks: list[Chunk] = []
-    for seg in segments:
-        chunk = Chunk(
-            text=seg.text,
-            chapter_path=[],
-            page_range=(1, parsed.page_count),
-            token_count=seg.token_count,
-            chunk_type=ChunkType.TOKEN_WINDOW,
-        )
-        chunks.append(chunk)
-
-    # 计算总 token 数
-    total_tokens = sum(c.token_count for c in chunks)
-
-    return ChunkList(
-        source=parsed.source,
-        chunks=chunks,
-        total_tokens=total_tokens,
-        chapter_count=0,  # 直通路径不识别章节
-    )
-
-
 async def chunk_document(
     content: bytes,
     parsed: ParsedDocument,
@@ -71,6 +36,7 @@ async def chunk_document(
     stock_code: str = "",
     report_date: str = "",
     max_tokens: int = DEFAULT_MAX_TOKENS,
+    overlap_tokens: int = OVERLAP_TOKENS,
     persist: bool = True,
 ) -> ChunkList:
     """对已解析的文档执行逻辑分块。
@@ -87,37 +53,74 @@ async def chunk_document(
         stock_code: 股票代码（用于持久化路径）。
         report_date: 报告日期（用于持久化路径）。
         max_tokens: 单个 Chunk 的最大 token 数。
+        overlap_tokens: 相邻 chunk 之间的重叠 token 数。
         persist: 是否持久化结果。
 
     Returns:
         ChunkList 对象。
+
+    Raises:
+        InvalidChunkingParameterError: 当 overlap_tokens >= max_tokens 时抛出。
     """
+    # 参数校验：overlap_tokens >= max_tokens 会导致无限循环
+    if overlap_tokens >= max_tokens:
+        raise InvalidChunkingParameterError(
+            f"overlap_tokens ({overlap_tokens}) must be less than max_tokens ({max_tokens})"
+        )
+
     doc: pymupdf.Document | None = None
     try:
         # Step 1: 打开 PDF
         doc = pymupdf.open(stream=content, filetype="pdf")
 
         # Step 2: 直通检查（整体长度小于3倍max_token的直接拆分）
-        total_tokens = count_tokens(parsed.full_text)
-        if total_tokens < BYPASS_THRESHOLD_FACTOR * max_tokens:
-            # 直通路径：按最大窗口拆分，跳过章节识别
-            segments = split_text_by_token_window(
-                text=parsed.full_text,
-                max_tokens=max_tokens,
-                overlap_tokens=OVERLAP_TOKENS,  # 使用默认 overlap
-                total_tokens=total_tokens,
-            )
-            chunk_list = _build_bypass_chunk_list(
-                parsed=parsed,
-                segments=segments,
+        # 使用 token_indexer 池化编码，如果文档小于阈值则直接切窗口
+        token_index = encode_pages_incremental(
+            parsed, threshold=BYPASS_THRESHOLD_FACTOR * max_tokens
+        )
+
+        if token_index is not None:
+            # 直通路径：使用 token ID 池切窗口，跳过章节识别
+            chunks: list[Chunk] = []
+            start = 0
+
+            while start < token_index.total_tokens:
+                # 切取窗口
+                text, actual_tokens, page_range = slice_window_from_index(
+                    index=token_index,
+                    start=start,
+                    length=max_tokens,
+                )
+
+                # 构建 Chunk
+                chunk = Chunk(
+                    text=text,
+                    chapter_path=[],
+                    page_range=page_range,
+                    token_count=actual_tokens,
+                    chunk_type=ChunkType.TOKEN_WINDOW,
+                )
+                chunks.append(chunk)
+
+                # 移动窗口（考虑 overlap）
+                start += max_tokens - overlap_tokens
+
+            # 计算总 token 数
+            total_token_count = sum(c.token_count for c in chunks)
+
+            chunk_list = ChunkList(
+                source=parsed.source,
+                chunks=chunks,
+                total_tokens=total_token_count,
+                chapter_count=0,  # 直通路径不识别章节
             )
 
             # 记录日志
             logfire.info(
-                "直通路径: source={source}, total_tokens={total}, segments={count}",
+                "直通路径: source={source}, total_tokens={total}, chunks={count}",
                 source=parsed.source,
-                total=total_tokens,
-                count=len(segments),
+                total=total_token_count,
+                count=len(chunks),
             )
 
             # 执行持久化（如果需要）
@@ -147,8 +150,8 @@ async def chunk_document(
         chunk_list = build_chunks(
             parsed,
             chapters,
-            max_tokens=DEFAULT_MAX_TOKENS,
-            overlap_tokens=OVERLAP_TOKENS,
+            max_tokens=max_tokens,
+            overlap_tokens=overlap_tokens,
         )
         logfire.info(
             "分块完成: source={source}, chunk_count={chunk_count}, total_tokens={total_tokens}, chapter_count={chapter_count}",

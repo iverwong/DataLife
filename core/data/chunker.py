@@ -14,6 +14,7 @@ from __future__ import annotations
 import re
 from typing import final
 
+from core.data.exceptions import InvalidChunkingParameterError
 from core.data.models import (
     ChapterBoundary,
     Chunk,
@@ -568,7 +569,7 @@ def split_text_by_token_window(
     降级行为：
     - text 为空: 返回空列表
     - max_tokens <= 0: 返回空列表
-    - overlap_tokens >= max_tokens: 自动修正 overlap_tokens = 0（避免无限循环）
+    - overlap_tokens >= max_tokens: 抛出 InvalidChunkingParameterError
     - overlap_tokens < 0: 自动修正为 0
 
     Args:
@@ -590,7 +591,9 @@ def split_text_by_token_window(
     if overlap_tokens < 0:
         overlap_tokens = 0
     if overlap_tokens >= max_tokens:
-        overlap_tokens = 0
+        raise InvalidChunkingParameterError(
+            f"overlap_tokens ({overlap_tokens}) must be less than max_tokens ({max_tokens})"
+        )
 
     total_tokens = total_tokens or count_tokens(text)
 

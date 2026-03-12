@@ -15,6 +15,15 @@ class ChunkingError(DataLifeError):
         super().__init__(message, cause=cause)
 
 
+class InvalidChunkingParameterError(ChunkingError):
+    """分块参数无效。
+
+    例如：overlap_tokens >= max_tokens 会导致无限循环。
+    """
+
+    pass
+
+
 class EmptyDocumentError(ChunkingError):
     """文档内容为空（无可分块的页面或文本）。"""
 
