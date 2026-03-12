@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from core.data.exceptions import InvalidChunkingParameterError
 from core.data.models import (
     ParsedDocument,
     ParsedPage,
@@ -474,13 +475,13 @@ class TestSplitTextByTokenWindow:
         """max_tokens=0 应返回空列表。"""
         assert split_text_by_token_window("测试", max_tokens=0) == []
 
-    def test_overlap_ge_max_tokens_auto_correct(self):
-        """overlap >= max_tokens 时应自动修正为 0，不死循环。"""
+    def test_overlap_ge_max_tokens_raises_error(self):
+        """overlap >= max_tokens 时应抛出 InvalidChunkingParameterError。"""
         text = "防死循环。" * 100
-        result = split_text_by_token_window(text, max_tokens=50, overlap_tokens=50)
-        assert len(result) >= 1  # 不挂起即通过
-        result2 = split_text_by_token_window(text, max_tokens=50, overlap_tokens=100)
-        assert len(result2) >= 1
+        with pytest.raises(InvalidChunkingParameterError):
+            split_text_by_token_window(text, max_tokens=50, overlap_tokens=50)
+        with pytest.raises(InvalidChunkingParameterError):
+            split_text_by_token_window(text, max_tokens=50, overlap_tokens=100)
 
     def test_start_token_monotonically_increasing(self):
         """所有 segment 的 start_token 应严格递增。"""
