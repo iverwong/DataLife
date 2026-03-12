@@ -71,7 +71,7 @@ class TestBuildChunks:
             ChapterBoundary(title=f"第{i+1}节", level=1, start_page=i+1, end_page=i+1, source="heading")
             for i in range(4)
         ]
-        result = build_chunks(short_parsed_doc, chapters, max_tokens=8000)
+        result = build_chunks(short_parsed_doc, chapters, max_tokens=8000, overlap_tokens=200)
         assert isinstance(result, ChunkList)
         assert len(result.chunks) == 4
         assert all(c.chunk_type == ChunkType.COMPLETE_CHAPTER for c in result.chunks)
@@ -82,13 +82,13 @@ class TestBuildChunks:
             ChapterBoundary(title=f"第{i+1}节", level=1, start_page=i+1, end_page=i+1, source="heading")
             for i in range(4)
         ]
-        result = build_chunks(short_parsed_doc, chapters)
+        result = build_chunks(short_parsed_doc, chapters, max_tokens=8000, overlap_tokens=200)
         assert result.chunks[0].needs_prior_summary is False
         assert all(c.needs_prior_summary is True for c in result.chunks[1:])
 
     def test_long_chapter_split(self, long_chapter_doc, two_chapters):
         """超长章节应被拆分为多个子块。"""
-        result = build_chunks(long_chapter_doc, two_chapters, max_tokens=500)
+        result = build_chunks(long_chapter_doc, two_chapters, max_tokens=500, overlap_tokens=50)
         ch2_chunks = [c for c in result.chunks if "第二章" in str(c.chapter_path)]
         assert len(ch2_chunks) > 1
         assert all(c.chunk_type in (ChunkType.SUB_SECTION, ChunkType.TOKEN_WINDOW) for c in ch2_chunks)
@@ -96,7 +96,7 @@ class TestBuildChunks:
     def test_token_count_within_limit(self, long_chapter_doc, two_chapters):
         """每个 chunk 的 token 数不应超过 max_tokens。"""
         max_t = 500
-        result = build_chunks(long_chapter_doc, two_chapters, max_tokens=max_t)
+        result = build_chunks(long_chapter_doc, two_chapters, max_tokens=max_t, overlap_tokens=50)
         for c in result.chunks:
             assert c.token_count <= max_t + 50
 
@@ -111,7 +111,7 @@ class TestBuildChunks:
             ChapterBoundary(title="公司简介", level=1, start_page=1, end_page=1, source="heading"),
             ChapterBoundary(title="经营情况", level=1, start_page=1, end_page=1, source="heading"),
         ]
-        result = build_chunks(parsed, chapters, max_tokens=8000)
+        result = build_chunks(parsed, chapters, max_tokens=8000, overlap_tokens=200)
         assert len(result.chunks) == 1
         assert result.chunks[0].chunk_type == ChunkType.COMPLETE_CHAPTER
         assert "重要提示" in result.chunks[0].text
@@ -130,7 +130,7 @@ class TestBuildChunks:
             ChapterBoundary(title="C", level=1, start_page=1, end_page=1, source="heading"),
             ChapterBoundary(title="D 长章节", level=1, start_page=2, end_page=3, source="heading"),
         ]
-        result = build_chunks(parsed, chapters, max_tokens=500)
+        result = build_chunks(parsed, chapters, max_tokens=500, overlap_tokens=50)
         page1_chunks = [c for c in result.chunks if c.page_range == (1, 1)]
         assert len(page1_chunks) == 1
         assert "A" in page1_chunks[0].text
@@ -298,7 +298,7 @@ class TestLevel2SamePageMerge:
             ChapterBoundary(title="三、竞争", level=2, start_page=2, end_page=2, source="bookmark"),
             ChapterBoundary(title="四、分析", level=2, start_page=3, end_page=4, source="bookmark"),
         ]
-        result = build_chunks(parsed, chapters, max_tokens=500)
+        result = build_chunks(parsed, chapters, max_tokens=500, overlap_tokens=50)
         ch_b_chunks = [c for c in result.chunks if c.page_range != (1, 1)]
         page2_chunks = [c for c in ch_b_chunks if c.page_range == (2, 2)]
         # 验证 page2_chunks 存在（合并后的章节），且所有 chunk 的 token 数在限制内
@@ -322,7 +322,7 @@ class TestContainedChapters:
             ChapterBoundary(title="第一章", level=1, start_page=1, end_page=1, source="heading"),
             ChapterBoundary(title="第二章", level=1, start_page=2, end_page=2, source="heading"),
         ]
-        result = build_chunks(parsed, chapters, max_tokens=8000)
+        result = build_chunks(parsed, chapters, max_tokens=8000, overlap_tokens=200)
         for chunk in result.chunks:
             assert len(chunk.contained_chapters) == 1
             assert chunk.contained_chapters[0].title in ("第一章", "第二章")
@@ -340,7 +340,7 @@ class TestContainedChapters:
             ChapterBoundary(title="C", level=1, start_page=1, end_page=1, source="heading"),
             ChapterBoundary(title="D", level=1, start_page=2, end_page=3, source="heading"),
         ]
-        result = build_chunks(parsed, chapters, max_tokens=500)
+        result = build_chunks(parsed, chapters, max_tokens=500, overlap_tokens=50)
         page1_chunks = [c for c in result.chunks if c.page_range == (1, 1)]
         assert len(page1_chunks) == 1
         merged_chunk = page1_chunks[0]
@@ -359,7 +359,7 @@ class TestContainedChapters:
             ChapterBoundary(title="公司简介", level=1, start_page=1, end_page=1, source="heading"),
             ChapterBoundary(title="经营情况", level=1, start_page=1, end_page=1, source="heading"),
         ]
-        result = build_chunks(parsed, chapters, max_tokens=8000)
+        result = build_chunks(parsed, chapters, max_tokens=8000, overlap_tokens=200)
         assert len(result.chunks) == 1
         chunk = result.chunks[0]
         assert len(chunk.contained_chapters) == 3
@@ -377,7 +377,7 @@ class TestContainedChapters:
             ChapterBoundary(title="短章", level=1, start_page=1, end_page=1, source="heading"),
             ChapterBoundary(title="长章", level=1, start_page=2, end_page=3, source="heading"),
         ]
-        result = build_chunks(parsed, chapters, max_tokens=300)
+        result = build_chunks(parsed, chapters, max_tokens=300, overlap_tokens=30)
         long_chunks = [c for c in result.chunks if c.page_range != (1, 1)]
         assert len(long_chunks) > 1
         for chunk in long_chunks:
