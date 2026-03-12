@@ -13,7 +13,7 @@ _ENCODING_NAME: str = "cl100k_base"
 _encoder: tiktoken.Encoding | None = None
 
 
-def _get_encoder() -> tiktoken.Encoding:
+def get_encoder() -> tiktoken.Encoding:
     """获取或懒加载 tiktoken 编码器（单例）。
 
     Returns:
@@ -36,7 +36,7 @@ def count_tokens(text: str) -> int:
     """
     if not text:
         return 0
-    encoder = _get_encoder()
+    encoder = get_encoder()
     tokens = encoder.encode(text)
     return len(tokens)
 
@@ -72,7 +72,7 @@ def slice_tokens(text: str, start: int, length: int) -> str:
     if length <= 0:
         return ""
 
-    encoder = _get_encoder()
+    encoder = get_encoder()
     tokens: list[int] = encoder.encode(text)
     total_tokens = len(tokens)
 
