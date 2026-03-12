@@ -43,13 +43,25 @@ class ChunkBuilder:
         chunk_index: int = 0,
         needs_prior_summary: bool = False,
         contained_chapters: list[ChunkMeta] | None = None,
+        token_count: int | None = None,
     ) -> Chunk:
-        """创建 Chunk 实例。"""
+        """创建 Chunk 实例。
+
+        Args:
+            text: Chunk 文本内容。
+            chapter_path: 章节路径。
+            page_range: 页码范围。
+            chunk_type: Chunk 类型。
+            chunk_index: Chunk 索引。
+            needs_prior_summary: 是否需要前置摘要。
+            contained_chapters: 包含的章节元数据列表。
+            token_count: 可选的 token 计数。若传入则跳过内部 count_tokens 调用。
+        """
         return Chunk(
             text=text,
             chapter_path=chapter_path,
             page_range=page_range,
-            token_count=count_tokens(text),
+            token_count=token_count if token_count is not None else count_tokens(text),
             chunk_type=chunk_type,
             chunk_index=chunk_index,
             needs_prior_summary=needs_prior_summary,
