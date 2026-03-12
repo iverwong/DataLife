@@ -1,0 +1,475 @@
+"""Token Indexer 模块测试。
+
+验证 token ID 池化、页码边界索引功能的契约正确性。
+"""
+
+from __future__ import annotations
+
+import array
+
+from core.data.models import PageChunk, PDFParseResult
+from core.data.token_counter import count_tokens
+from core.data.token_indexer import (
+    PageTokenIndex,
+    encode_pages_incremental,
+    find_page_at_token,
+    get_chapter_token_count,
+    slice_window_from_index,
+)
+
+
+class TestEncodePagesIncremental:
+    """encode_pages_incremental 函数测试。"""
+
+    def test_single_page_document(self):
+        """单页文档，验证 token_ids 长度 = count_tokens 结果。"""
+        # 构建单页 ParsedDocument
+        page_text = "这是一段测试文本。" * 50
+        parsed = PDFParseResult(
+            source="test.pdf",
+            page_count=1,
+            chunks=[
+                PageChunk(
+                    page_number=1,
+                    markdown_text=page_text,
+                    metadata={},
+                    toc_items=[],
+                    page_boxes=[],
+                ),
+            ],
+        )
+
+        # 执行编码
+        result = encode_pages_incremental(parsed)
+
+        # 验证结果非空
+        assert result is not None
+        # 验证 token_ids 长度等于 count_tokens(full_text) 结果
+        expected_tokens = count_tokens(parsed.full_text)
+        assert len(result.token_ids) == expected_tokens
+
+    def test_multi_page_boundaries(self):
+        """多页文档，验证 page_boundaries 记录正确。"""
+        # 构建 3 页文档
+        pages = [
+            PageChunk(
+                page_number=1,
+                markdown_text="第一页内容。",
+                metadata={},
+                toc_items=[],
+                page_boxes=[],
+            ),
+            PageChunk(
+                page_number=2,
+                markdown_text="第二页内容。",
+                metadata={},
+                toc_items=[],
+                page_boxes=[],
+            ),
+            PageChunk(
+                page_number=3,
+                markdown_text="第三页内容。",
+                metadata={},
+                toc_items=[],
+                page_boxes=[],
+            ),
+        ]
+        parsed = PDFParseResult(
+            source="test.pdf",
+            page_count=3,
+            chunks=pages,
+        )
+
+        result = encode_pages_incremental(parsed)
+
+        assert result is not None
+        # page_boundaries 应有 3 条记录（每页一个）
+        assert len(result.page_boundaries) == 3
+        # 验证每条记录格式 (page_number, token_start_index)
+        assert result.page_boundaries[0][0] == 1
+        assert result.page_boundaries[1][0] == 2
+        assert result.page_boundaries[2][0] == 3
+        # 验证起始索引递增
+        assert result.page_boundaries[0][1] == 0
+        assert result.page_boundaries[1][1] > result.page_boundaries[0][1]
+        assert result.page_boundaries[2][1] > result.page_boundaries[1][1]
+
+    def test_threshold_exceeded_returns_none(self):
+        """超过阈值返回 None。"""
+        # 构建足够大的文档
+        large_text = "测试文本。" * 1000
+        parsed = PDFParseResult(
+            source="test.pdf",
+            page_count=1,
+            chunks=[
+                PageChunk(
+                    page_number=1,
+                    markdown_text=large_text,
+                    metadata={},
+                    toc_items=[],
+                    page_boxes=[],
+                ),
+            ],
+        )
+
+        # 设置一个较小的阈值（小于文档 token 数）
+        threshold = 100
+        result = encode_pages_incremental(parsed, threshold=threshold)
+
+        # 验证返回 None
+        assert result is None
+
+    def test_threshold_not_exceeded_returns_index(self):
+        """未超过阈值返回完整 PageTokenIndex。"""
+        # 构建足够大的文档
+        large_text = "测试文本。" * 1000
+        parsed = PDFParseResult(
+            source="test.pdf",
+            page_count=1,
+            chunks=[
+                PageChunk(
+                    page_number=1,
+                    markdown_text=large_text,
+                    metadata={},
+                    toc_items=[],
+                    page_boxes=[],
+                ),
+            ],
+        )
+
+        # 设置一个较大的阈值（大于文档 token 数）
+        threshold = count_tokens(large_text) + 1000
+        result = encode_pages_incremental(parsed, threshold=threshold)
+
+        # 验证返回完整索引
+        assert result is not None
+        assert isinstance(result, PageTokenIndex)
+
+    def test_no_threshold_always_completes(self):
+        """不设阈值，大文档也完成编码。"""
+        # 构建大文档（约 5000+ tokens）
+        large_text = "这是测试内容。" * 500
+        parsed = PDFParseResult(
+            source="test.pdf",
+            page_count=1,
+            chunks=[
+                PageChunk(
+                    page_number=1,
+                    markdown_text=large_text,
+                    metadata={},
+                    toc_items=[],
+                    page_boxes=[],
+                ),
+            ],
+        )
+
+        # 不设置阈值
+        result = encode_pages_incremental(parsed)
+
+        # 验证完成编码
+        assert result is not None
+        expected_tokens = count_tokens(parsed.full_text)
+        assert len(result.token_ids) == expected_tokens
+
+    def test_bpe_consistency(self):
+        """逐页 encode + extend vs 全文 encode，token 数一致。"""
+        # 构建多页文档
+        pages = [
+            PageChunk(
+                page_number=1,
+                markdown_text="第一页的测试内容。",
+                metadata={},
+                toc_items=[],
+                page_boxes=[],
+            ),
+            PageChunk(
+                page_number=2,
+                markdown_text="第二页的测试内容。",
+                metadata={},
+                toc_items=[],
+                page_boxes=[],
+            ),
+            PageChunk(
+                page_number=3,
+                markdown_text="第三页的测试内容。",
+                metadata={},
+                toc_items=[],
+                page_boxes=[],
+            ),
+        ]
+        parsed = PDFParseResult(
+            source="test.pdf",
+            page_count=3,
+            chunks=pages,
+        )
+
+        result = encode_pages_incremental(parsed)
+
+        assert result is not None
+        # 逐页编码的总 token 数应等于全文编码的 token 数
+        expected_total = count_tokens(parsed.full_text)
+        assert result.total_tokens == expected_total
+
+
+class TestFindPageAtToken:
+    """find_page_at_token 函数测试。"""
+
+    def test_find_page_at_token(self):
+        """各种位置的页码查找。"""
+        # 构建 3 页文档，每页 token 数不同
+        # 先获取各页 token 数以便计算边界
+        page1_text = "第一页"
+        page2_text = "第二页内容较多" * 10
+        page3_text = "第三页内容更多更多" * 20
+
+        pages = [
+            PageChunk(
+                page_number=1,
+                markdown_text=page1_text,
+                metadata={},
+                toc_items=[],
+                page_boxes=[],
+            ),
+            PageChunk(
+                page_number=2,
+                markdown_text=page2_text,
+                metadata={},
+                toc_items=[],
+                page_boxes=[],
+            ),
+            PageChunk(
+                page_number=3,
+                markdown_text=page3_text,
+                metadata={},
+                toc_items=[],
+                page_boxes=[],
+            ),
+        ]
+        parsed = PDFParseResult(
+            source="test.pdf",
+            page_count=3,
+            chunks=pages,
+        )
+
+        index = encode_pages_incremental(parsed)
+        assert index is not None
+
+        # 测试第一页的 token（索引 0）
+        assert find_page_at_token(index.page_boundaries, 0) == 1
+
+        # 测试中间页的 token（需要计算）
+        page1_tokens = count_tokens(page1_text)
+        mid_of_page2 = page1_tokens + 1
+        assert find_page_at_token(index.page_boundaries, mid_of_page2) == 2
+
+        # 测试最后一页的 token
+        page2_tokens = count_tokens(page2_text)
+        page3_start = page1_tokens + page2_tokens
+        assert find_page_at_token(index.page_boundaries, page3_start) == 3
+
+    def test_find_page_at_token_boundary(self):
+        """恰好在页面边界的 token。"""
+        # 构建 2 页文档
+        page1_text = "AAA" * 50  # 约 150 tokens
+        page2_text = "BBB" * 50
+
+        pages = [
+            PageChunk(
+                page_number=1,
+                markdown_text=page1_text,
+                metadata={},
+                toc_items=[],
+                page_boxes=[],
+            ),
+            PageChunk(
+                page_number=2,
+                markdown_text=page2_text,
+                metadata={},
+                toc_items=[],
+                page_boxes=[],
+            ),
+        ]
+        parsed = PDFParseResult(
+            source="test.pdf",
+            page_count=2,
+            chunks=pages,
+        )
+
+        index = encode_pages_incremental(parsed)
+        assert index is not None
+
+        # 获取第一页结束时的 token 索引
+        page1_token_count = count_tokens(page1_text)
+        # 加上页间分隔符 "\n\n" 的 token
+        separator_tokens = count_tokens("\n\n")
+
+        # 边界 token（第一页最后一个 token）
+        boundary_idx = page1_token_count - 1
+        assert find_page_at_token(index.page_boundaries, boundary_idx) == 1
+
+        # 边界 token（第二页第一个 token，即 page1_tokens + separator_tokens）
+        boundary_idx2 = page1_token_count + separator_tokens
+        assert find_page_at_token(index.page_boundaries, boundary_idx2) == 2
+
+
+class TestSliceWindowFromIndex:
+    """slice_window_from_index 函数测试。"""
+
+    def test_slice_window_from_index(self):
+        """切窗口文本 + 页码范围正确。"""
+        pages = [
+            PageChunk(
+                page_number=1,
+                markdown_text="第一页内容。",
+                metadata={},
+                toc_items=[],
+                page_boxes=[],
+            ),
+            PageChunk(
+                page_number=2,
+                markdown_text="第二页内容。",
+                metadata={},
+                toc_items=[],
+                page_boxes=[],
+            ),
+        ]
+        parsed = PDFParseResult(
+            source="test.pdf",
+            page_count=2,
+            chunks=pages,
+        )
+
+        index = encode_pages_incremental(parsed)
+        assert index is not None
+
+        # 从 token 0 开始，切取 10 个 token
+        text, actual_count, page_range = slice_window_from_index(index, 0, 10)
+
+        # 验证返回文本非空
+        assert isinstance(text, str)
+        assert len(text) > 0
+        # 验证 actual_token_count 大于 0
+        assert actual_count > 0
+        # 验证页码范围
+        assert page_range[0] == 1
+        assert page_range[1] >= page_range[0]
+
+    def test_slice_window_cross_page(self):
+        """窗口跨页时页码范围精确。"""
+        # 构建两页，确保窗口会跨页
+        page1_text = "第一页" * 50  # 约 100 tokens
+        page2_text = "第二页" * 50
+
+        pages = [
+            PageChunk(
+                page_number=1,
+                markdown_text=page1_text,
+                metadata={},
+                toc_items=[],
+                page_boxes=[],
+            ),
+            PageChunk(
+                page_number=2,
+                markdown_text=page2_text,
+                metadata={},
+                toc_items=[],
+                page_boxes=[],
+            ),
+        ]
+        parsed = PDFParseResult(
+            source="test.pdf",
+            page_count=2,
+            chunks=pages,
+        )
+
+        index = encode_pages_incremental(parsed)
+        assert index is not None
+
+        # 从接近第一页末尾的位置开始切窗口，确保跨页
+        page1_token_count = count_tokens(page1_text)
+        start = page1_token_count - 10  # 第一页末尾附近
+        length = 30
+
+        _text, _actual_count, page_range = slice_window_from_index(index, start, length)
+
+        # 验证页码范围包含两页
+        assert page_range[0] == 1
+        assert page_range[1] == 2
+
+
+class TestGetChapterTokenCount:
+    """get_chapter_token_count 函数测试。"""
+
+    def test_get_chapter_token_count(self):
+        """章节 token 计数 vs 编码验证。"""
+        pages = [
+            PageChunk(
+                page_number=1,
+                markdown_text="第一页内容。",
+                metadata={},
+                toc_items=[],
+                page_boxes=[],
+            ),
+            PageChunk(
+                page_number=2,
+                markdown_text="第二页内容。",
+                metadata={},
+                toc_items=[],
+                page_boxes=[],
+            ),
+            PageChunk(
+                page_number=3,
+                markdown_text="第三页内容。",
+                metadata={},
+                toc_items=[],
+                page_boxes=[],
+            ),
+        ]
+        parsed = PDFParseResult(
+            source="test.pdf",
+            page_count=3,
+            chunks=pages,
+        )
+
+        index = encode_pages_incremental(parsed)
+        assert index is not None
+
+        # 计算第 1-2 页的 token 数
+        chapter_tokens = get_chapter_token_count(index, start_page=1, end_page=2)
+
+        # 验证大于 0
+        assert chapter_tokens > 0
+
+        # 验证与实际编码结果一致（取前两页的 full_text 部分）
+        expected_text = pages[0].markdown_text + "\n\n" + pages[1].markdown_text
+        expected_tokens = count_tokens(expected_text)
+        assert chapter_tokens == expected_tokens
+
+
+class TestArrayMemoryType:
+    """验证 token_ids 使用 array.array 而非 list。"""
+
+    def test_array_memory_type(self):
+        """验证 token_ids 是 array.array 而非 list。"""
+        page_text = "测试文本。" * 50
+        parsed = PDFParseResult(
+            source="test.pdf",
+            page_count=1,
+            chunks=[
+                PageChunk(
+                    page_number=1,
+                    markdown_text=page_text,
+                    metadata={},
+                    toc_items=[],
+                    page_boxes=[],
+                ),
+            ],
+        )
+
+        result = encode_pages_incremental(parsed)
+
+        assert result is not None
+        # 验证 token_ids 是 array.array 类型
+        assert isinstance(result.token_ids, array.array)
+        # 验证不是 list
+        assert not isinstance(result.token_ids, list)
