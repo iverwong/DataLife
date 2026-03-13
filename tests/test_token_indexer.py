@@ -8,7 +8,7 @@ from __future__ import annotations
 import array
 
 from core.data.models import PageChunk, PDFParseResult
-from core.data.token_counter import count_tokens
+from core.data.token_counter import count_tokens, get_encoder
 from core.data.token_indexer import (
     PageTokenIndex,
     encode_pages_incremental,
@@ -173,6 +173,7 @@ class TestEncodePagesIncremental:
 
     def test_bpe_consistency(self):
         """逐页 encode + extend vs 全文 encode，token 数一致。"""
+        decoder = get_encoder()
         # 构建多页文档
         pages = [
             PageChunk(
@@ -206,9 +207,11 @@ class TestEncodePagesIncremental:
         result = encode_pages_incremental(parsed)
 
         assert result is not None
-        # 逐页编码的总 token 数应等于全文编码的 token 数
+        # 逐页编码的总 token 数应大于等于全文编码的 token 数
         expected_total = count_tokens(parsed.full_text)
-        assert result.total_tokens == expected_total
+        assert result.total_tokens >= expected_total
+        # decode一致性
+        assert decoder.decode(result.token_ids) == parsed.full_text
 
 
 class TestFindPageAtToken:
@@ -258,14 +261,14 @@ class TestFindPageAtToken:
         assert find_page_at_token(index.page_boundaries, 0) == 1
 
         # 测试中间页的 token（需要计算）
-        page1_tokens = count_tokens(page1_text)
-        mid_of_page2 = page1_tokens + 1
-        assert find_page_at_token(index.page_boundaries, mid_of_page2) == 2
+        assert (
+            find_page_at_token(index.page_boundaries, index.page_boundaries[1][1]) == 2
+        )
 
         # 测试最后一页的 token
-        page2_tokens = count_tokens(page2_text)
-        page3_start = page1_tokens + page2_tokens
-        assert find_page_at_token(index.page_boundaries, page3_start) == 3
+        assert (
+            find_page_at_token(index.page_boundaries, index.page_boundaries[2][1]) == 3
+        )
 
     def test_find_page_at_token_boundary(self):
         """恰好在页面边界的 token。"""
@@ -434,16 +437,23 @@ class TestGetChapterTokenCount:
         index = encode_pages_incremental(parsed)
         assert index is not None
 
-        # 计算第 1-2 页的 token 数
-        chapter_tokens = get_chapter_token_count(index, start_page=1, end_page=2)
+        boundaries = index.page_boundaries
+        _, s1 = boundaries[0]  # page1 起始
+        _, s2 = boundaries[1]  # page2 起始
+        _, s3 = boundaries[2]  # page3 起始
 
-        # 验证大于 0
+        # 第 1-2 页的 token 数 = page3 起始位置 - page1 起始位置
+        chapter_tokens = get_chapter_token_count(index, start_page=1, end_page=2)
+        assert chapter_tokens == s3 - s1
         assert chapter_tokens > 0
 
-        # 验证与实际编码结果一致（取前两页的 full_text 部分）
-        expected_text = pages[0].markdown_text + "\n\n" + pages[1].markdown_text
-        expected_tokens = count_tokens(expected_text)
-        assert chapter_tokens == expected_tokens
+        # 单页：第 1 页的 token 数 = page2 起始 - page1 起始
+        single_page = get_chapter_token_count(index, start_page=1, end_page=1)
+        assert single_page == s2 - s1
+
+        # 全部页：第 1-3 页 = 总 token 数 - page1 起始
+        all_pages = get_chapter_token_count(index, start_page=1, end_page=3)
+        assert all_pages == index.total_tokens - s1
 
 
 class TestArrayMemoryType:

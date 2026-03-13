@@ -50,41 +50,30 @@ def encode_pages_incremental(
     """
     encoder = get_encoder()
 
-    # 计算每页的实际 token 数（用于构建 page_boundaries）
-    # 注意：这里逐页编码是为了确定边界位置，不影响最终的 token_ids
-    page_token_counts: list[int] = []
-    for page in parsed.chunks:
-        page_tokens = encoder.encode(page.markdown_text)
-        page_token_counts.append(len(page_tokens))
+    # 扁平 token ID 池，使用 unsigned int（4 bytes/token）节省内存
+    token_ids = array.array("I")
 
-    # 完整编码 full_text（避免 BPE 上下文差异导致的 token 数不同）
-    full_tokens = encoder.encode(parsed.full_text)
-    total_full_tokens = len(full_tokens)
-
-    # 检查 threshold
-    if threshold is not None and total_full_tokens > threshold:
-        return None
-
-    # 转换为 array.array
-    token_ids = array.array("I", full_tokens)
-
-    # 构建 page_boundaries
-    # 注意：测试用例期望 page_boundary 的起始位置使用逐页 token 计数（不含分隔符）
-    # 这样 find_page_at_token(page1_tokens + page2_tokens) 才能返回页3
-    page_count = parsed.page_count
-    if page_count == 0:
-        return PageTokenIndex(token_ids=token_ids, page_boundaries=[], total_tokens=0)
-
-    # 计算每页的起始 token 位置（使用逐页 token 计数，不含分隔符）
+    # 页码边界：记录每页第一个 token 在 token_ids 中的起始索引
     page_boundaries: list[tuple[int, int]] = []
-    current_token_idx = 0
+
+    # 预编码页间分隔符，避免循环内重复编码
+    # 与 ParsedDocument.full_text 的 "\n\n".join() 行为保持一致
+    separator_ids = encoder.encode("\n\n")
 
     for idx, page in enumerate(parsed.chunks):
-        page_boundaries.append((page.page_number, current_token_idx))
+        # 记录当前页的起始位置（此时 len(token_ids) 即为该页第一个 token 的索引）
+        page_boundaries.append((page.page_number, len(token_ids)))
 
-        if idx < page_count - 1:
-            # 加上当前页的 token 数（不含分隔符）
-            current_token_idx += page_token_counts[idx]
+        # 逐页编码并追加到池中（每页只编码一次）
+        token_ids.extend(encoder.encode(page.markdown_text))
+
+        # 非最后一页时追加分隔符 token
+        if idx < parsed.page_count - 1:
+            token_ids.extend(separator_ids)
+
+        # 逐页累积检查 threshold，大文档可提前退出，无需编码所有页面
+        if threshold is not None and len(token_ids) > threshold:
+            return None
 
     return PageTokenIndex(
         token_ids=token_ids,
@@ -146,7 +135,7 @@ def slice_window_from_index(
     actual_length = min(length, index.total_tokens - start)
 
     # 切片 token IDs
-    sliced_tokens = list(index.token_ids[start : start + actual_length])
+    sliced_tokens = index.token_ids[start : start + actual_length]
 
     # 解码为文本
     text = encoder.decode(sliced_tokens)
