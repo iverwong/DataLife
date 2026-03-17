@@ -56,6 +56,3 @@ Thumbs.db
 
 # ruff cache
 /.ruff_cache/
-
-# claude code plan
-/.claude/plans/

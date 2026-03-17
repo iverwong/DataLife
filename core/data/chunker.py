@@ -374,7 +374,15 @@ def _split_by_subheadings(
             if not sub_text:
                 continue
 
-            if count_tokens(sub_text) <= max_tokens:
+            # 优先使用 token_index 预计算的 token 计数，避免即时编码
+            if token_index is not None:
+                sub_tokens = get_chapter_token_count(
+                    token_index, boundary.start_page, boundary.end_page
+                )
+            else:
+                sub_tokens = count_tokens(sub_text)
+
+            if sub_tokens <= max_tokens:
                 boundary_chunks.append(
                     ChunkBuilder.create_chunk(
                         text=sub_text,
@@ -383,6 +391,7 @@ def _split_by_subheadings(
                         chunk_type=ChunkType.SUB_SECTION,
                         chunk_index=len(boundary_chunks),
                         needs_prior_summary=len(boundary_chunks) > 0,
+                        token_count=sub_tokens,
                     )
                 )
             else:
@@ -606,7 +615,9 @@ def _split_by_token_window_with_index(
         # 如果窗口文本为空，降级到截断处理
         if not window_text:
             # 降级：截取剩余文本
-            remaining_text = slice_tokens(text, start, max_tokens)
+            # 将全局 token 索引转换为章节内偏移
+            chapter_offset = start - chapter_start_token
+            remaining_text = slice_tokens(text, chapter_offset, max_tokens)
             if remaining_text:
                 chunks.append(
                     ChunkBuilder.create_chunk(

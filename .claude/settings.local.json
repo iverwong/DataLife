@@ -21,20 +21,5 @@
       "WebSearch"
     ]
   },
-  "skipWebFetchPreflight": true,
-  "hooks": {
-    "SubagentStop": [
-      {
-        "matcher": "worker",
-        "hooks": [
-          {
-            "type": "agent",
-            "prompt": "你是代码审查助手。请分析以下子代理的工作日志，发现两类问题：\n\n1. 任务偏差：主代理委托的任务与子代理实际实现之间的差异\n2. 错误尝试：子代理在执行过程中进行错误尝试的内容\n\n要求：\n- 只报告发现的问题，不要自行修复\n- 如果没有问题，返回\"✅ 审查通过：无发现\"\n- 输出格式：\n  - 问题类型\n  - 具体描述\n  - 位置（文件/行号）\n  - 建议\n\n子代理输入JSON：$ARGUMENTS",
-            "model": "claude-sonnet-4-6",
-            "timeout": 120
-          }
-        ]
-      }
-    ]
-  }
+  "skipWebFetchPreflight": true
 }

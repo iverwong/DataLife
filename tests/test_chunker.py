@@ -557,3 +557,92 @@ class TestSplitByTokenWindowWithIndex:
             f"Total chunk tokens {total_chunk_tokens} exceeds "
             f"chapter tokens {chapter_total_tokens} by too much"
         )
+
+
+# ── 子标题拆分 token_index 复用测试 ────────────────────────────────────────
+
+import array
+from core.data.token_indexer import PageTokenIndex
+
+
+class TestSplitBySubheadingsTokenIndex:
+    """测试 _split_by_subheadings 复用 token_index 的 token 计数。"""
+
+    def test_uses_token_index_when_provided(self):
+        """有 token_index 时，子节 token 计数应使用 get_chapter_token_count。"""
+        # 构建文档：3 页，每页约 50 tokens
+        pages = [
+            ParsedPage(page_number=1, markdown_text="# 第一章\n内容A" * 20),
+            ParsedPage(page_number=2, markdown_text="# 第二章\n内容B" * 20),
+            ParsedPage(page_number=3, markdown_text="# 第三章\n内容C" * 20),
+        ]
+        parsed = ParsedDocument(source="test.pdf", page_count=3, chunks=pages)
+
+        # 手动构造 PageTokenIndex
+        # 每页约 50 tokens，总共 150 tokens
+        token_index = PageTokenIndex(
+            token_ids=array.array("I", list(range(150))),
+            page_boundaries=[(1, 0), (2, 50), (3, 100)],
+            total_tokens=150,
+        )
+
+        # 子边界：第 2 章（页码 2-2）
+        sub_boundaries = [
+            ChapterBoundary(title="第二章", level=1, start_page=2, end_page=2, source="heading"),
+        ]
+
+        # 调用 _split_by_subheadings，传入 token_index
+        result = _split_by_subheadings(
+            _text="",
+            chapter_path=["文档"],
+            _page_range=(1, 3),
+            max_tokens=1000,
+            overlap_tokens=50,
+            sub_boundaries=sub_boundaries,
+            parsed=parsed,
+            token_index=token_index,
+        )
+
+        # 验证返回了 chunk
+        assert len(result) == 1
+        chunk = result[0]
+
+        # 验证 token_count 使用了 get_chapter_token_count 的结果（页码 2-2 的 token 数 = 50）
+        expected_tokens = get_chapter_token_count(token_index, start_page=2, end_page=2)
+        assert chunk.token_count == expected_tokens, (
+            f"Expected token_count={expected_tokens}, got {chunk.token_count}"
+        )
+        assert chunk.token_count == 50
+
+    def test_falls_back_to_count_tokens_when_no_index(self):
+        """无 token_index 时，应回退到 count_tokens（回归测试）。"""
+        # 构建文档：单页
+        pages = [
+            ParsedPage(page_number=1, markdown_text="# 第一章\n内容A" * 20),
+        ]
+        parsed = ParsedDocument(source="test.pdf", page_count=1, chunks=pages)
+
+        # 子边界：第 1 章（页码 1-1）
+        sub_boundaries = [
+            ChapterBoundary(title="第一章", level=1, start_page=1, end_page=1, source="heading"),
+        ]
+
+        # 不传入 token_index
+        result = _split_by_subheadings(
+            _text="",
+            chapter_path=["文档"],
+            _page_range=(1, 1),
+            max_tokens=1000,
+            overlap_tokens=50,
+            sub_boundaries=sub_boundaries,
+            parsed=parsed,
+            token_index=None,
+        )
+
+        # 验证返回了 chunk
+        assert len(result) == 1
+        chunk = result[0]
+
+        # 验证 token_count 使用了 count_tokens 的结果
+        expected_tokens = count_tokens(chunk.text)
+        assert chunk.token_count == expected_tokens
