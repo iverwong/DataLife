@@ -33,6 +33,7 @@ metadata:
 - 已有的抽象基类、Protocol、TypedDict 定义（命名约定和组织方式）
 - 已有的测试文件（测试风格：fixture 用法、命名、目录结构）
 - `CLAUDE.md`（如存在，了解项目级约定）
+- 使用 `git checkout master && git checkout -b feature/xxx` **创建分支**
 - 详见 `references/style-checklist.md` 的完整检查清单
 
 ### 执行中：质量标准

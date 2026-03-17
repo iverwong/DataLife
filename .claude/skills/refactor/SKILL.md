@@ -88,7 +88,8 @@ metadata:
 1. **阅读评估报告 / 问题清单**：理解本次改进的目标和范围
 2. **运行全量测试**，记录基线结果（测试总数、通过数）
 3. **运行 basedpyright + ruff**，确认基线全绿
-4. 详见 `references/refactor-safety-checklist.md` 的完整检查清单
+4. 使用 `git checkout master && git checkout -b refactor/xxx` **创建分支**
+5. 详见 `references/refactor-safety-checklist.md` 的完整检查清单
 
 ### 2) 读取计划并提取步骤清单
 
