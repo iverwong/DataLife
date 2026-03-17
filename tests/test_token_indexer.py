@@ -455,6 +455,49 @@ class TestGetChapterTokenCount:
         all_pages = get_chapter_token_count(index, start_page=1, end_page=3)
         assert all_pages == index.total_tokens - s1
 
+    def test_consecutive_pages(self):
+        """页码连续时的回归测试（page_boundaries = [(1, 0), (2, 100), (3, 200)]）。"""
+        # 手动构造 PageTokenIndex，模拟连续页码
+        index = PageTokenIndex(
+            token_ids=array.array("I", list(range(300))),
+            page_boundaries=[(1, 0), (2, 100), (3, 200)],
+            total_tokens=300,
+        )
+
+        # 查询第 2 页（start_page=2, end_page=2）
+        result = get_chapter_token_count(index, start_page=2, end_page=2)
+        # 预期：第2页的token数 = 200 - 100 = 100
+        assert result == 100
+
+    def test_non_consecutive_pages(self):
+        """页码不连续时的防御性验证（page_boundaries = [(1, 0), (3, 100), (6, 200)]）。"""
+        # 手动构造 PageTokenIndex，模拟不连续页码（跳过第2、4、5页）
+        index = PageTokenIndex(
+            token_ids=array.array("I", list(range(300))),
+            page_boundaries=[(1, 0), (3, 100), (6, 200)],
+            total_tokens=300,
+        )
+
+        # 查询第 3 页（start_page=3, end_page=3）
+        # 第3页在数组中的位置是 index=1（第2个元素），不是 page_num-1=2
+        result = get_chapter_token_count(index, start_page=3, end_page=3)
+        # 预期：第3页的token数 = 200 - 100 = 100
+        assert result == 100
+
+    def test_last_page(self):
+        """最后一页应使用 total_tokens 作为结束位置。"""
+        # 手动构造 PageTokenIndex
+        index = PageTokenIndex(
+            token_ids=array.array("I", list(range(300))),
+            page_boundaries=[(1, 0), (2, 100), (5, 200)],
+            total_tokens=300,
+        )
+
+        # 查询第 5 页（最后一页）
+        result = get_chapter_token_count(index, start_page=5, end_page=5)
+        # 预期：第5页的token数 = total_tokens(300) - 200 = 100
+        assert result == 100
+
 
 class TestArrayMemoryType:
     """验证 token_ids 使用 array.array 而非 list。"""

@@ -166,21 +166,17 @@ def get_chapter_token_count(
     Returns:
         该页码范围内的 token 数。
     """
-    # 找到起始页的 token 边界
+    # 找到起始页的 token 边界（线性查找，不依赖页码连续性）
     start_token = None
-    for page_num, token_start in index.page_boundaries:
-        if page_num == start_page:
-            start_token = token_start
-            break
-
-    # 找到结束页的 token 边界
     end_token = None
-    for page_num, token_start in index.page_boundaries:
+
+    for i, (page_num, token_start) in enumerate(index.page_boundaries):
+        if page_num == start_page and start_token is None:
+            start_token = token_start
         if page_num == end_page:
-            # 找到下一页的 start_token 来确定 end_page 的结束位置
-            page_idx = end_page - 1  # 转换为 0-based 索引
-            if page_idx + 1 < len(index.page_boundaries):
-                end_token = index.page_boundaries[page_idx + 1][1]
+            # 用实际遍历位置 i 找下一页，而非 end_page - 1
+            if i + 1 < len(index.page_boundaries):
+                end_token = index.page_boundaries[i + 1][1]
             else:
                 end_token = index.total_tokens
             break
