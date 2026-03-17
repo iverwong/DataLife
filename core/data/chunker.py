@@ -11,7 +11,6 @@
 
 from __future__ import annotations
 
-import re
 from typing import final
 
 from core.data.models import (
@@ -172,9 +171,9 @@ def build_chunks(
 
             # c. 优先按子边界拆分
             sub_chunks = _split_by_subheadings(
-                text=chapter_text,
+                _text=chapter_text,
                 chapter_path=[chapter.title],
-                page_range=(chapter.start_page, chapter.end_page),
+                _page_range=(chapter.start_page, chapter.end_page),
                 max_tokens=max_tokens,
                 overlap_tokens=overlap_tokens,
                 sub_boundaries=[m.chapter for m in merged_sub_boundaries]
@@ -334,48 +333,35 @@ def _extract_chapter_text(
     return "\n\n".join(texts)
 
 
-# Markdown 标题正则（用于子章节拆分）
-_SUB_HEADING_PATTERN: re.Pattern[str] = re.compile(
-    r"^(#{2,3})\s+(.+)$",
-    re.MULTILINE,
-)
-
-# 中文子标题正则（支持编号后有/无空格两种情况）
-_CN_SUB_HEADING_PATTERN: re.Pattern[str] = re.compile(
-    r"^\s*(?:[一二三四五六七八九十]+[、.]|[（(][一二三四五六七八九十\d]+[)）]|\d+\.\d+)\s*\S.*$",
-    re.MULTILINE,
-)
-
-
 def _split_by_subheadings(
-    text: str,
+    _text: str,
     chapter_path: list[str],
-    page_range: tuple[int, int],
+    _page_range: tuple[int, int],
     *,
     max_tokens: int,
     overlap_tokens: int,
     sub_boundaries: list[ChapterBoundary] | None = None,
     parsed: ParsedDocument | None = None,
     token_index: PageTokenIndex | None = None,
-) -> list[Chunk] | None:
+) -> list[Chunk]:
     """尝试按子标题拆分超长章节。
 
-    拆分边界来源（按优先级）：
+    拆分边界来源：
     1. **预检测边界**：若 sub_boundaries 非空，使用章节检测器提供的
        level≥2 子边界按页码范围切分文本
-    2. **正则检测**：若无预检测边界，退回双通道正则检测
+    2. **无预检测边界**：直接返回空列表，触发调用方降级到 token 窗口
 
     Args:
-        text: 章节 Markdown 文本。
+        _text: 章节 Markdown 文本（保留参数，仅在有预检测边界时使用）。
         chapter_path: 当前章节路径。
-        page_range: 章节页码范围。
+        _page_range: 章节页码范围（保留参数，仅在有预检测边界时使用）。
         max_tokens: 单块最大 token 数。
         overlap_tokens: overlap token 数。
         sub_boundaries: 可选，章节检测器提供的 level≥2 子章节边界。
         parsed: 可选，ParsedDocument，用于从原始页面数据提取子边界文本。
 
     Returns:
-        Chunk 列表，或 None 表示无法按子标题拆分。
+        Chunk 列表，或空列表表示无法按子标题拆分。
     """
     if sub_boundaries and parsed:
         # 使用预检测边界拆分（按页码范围）
@@ -400,114 +386,32 @@ def _split_by_subheadings(
                     )
                 )
             else:
-                # 超长子节：优先递归尝试更细粒度拆分
-                sub_chunks = _split_by_subheadings(
+                # 超长子节：直接降级到 token 窗口兜底
+                window_chunks = _split_by_token_window(
                     text=sub_text,
                     chapter_path=chapter_path + [boundary.title],
                     page_range=(boundary.start_page, boundary.end_page),
                     max_tokens=max_tokens,
                     overlap_tokens=overlap_tokens,
-                    sub_boundaries=None,  # 退回正则检测
-                    parsed=parsed,
                     token_index=token_index,
                 )
-                if sub_chunks:
-                    boundary_chunks.extend(sub_chunks)
-                else:
-                    # 正则检测也无法拆分，退回 token 窗口兜底
-                    window_chunks = _split_by_token_window(
-                        text=sub_text,
-                        chapter_path=chapter_path + [boundary.title],
-                        page_range=(boundary.start_page, boundary.end_page),
-                        max_tokens=max_tokens,
-                        overlap_tokens=overlap_tokens,
-                        token_index=token_index,
-                    )
-                    for j, wc in enumerate(window_chunks):
-                        boundary_chunks.append(
-                            ChunkBuilder.create_chunk(
-                                text=wc.text,
-                                chapter_path=chapter_path + [boundary.title],
-                                page_range=wc.page_range,
-                                chunk_type=ChunkType.TOKEN_WINDOW,
-                                chunk_index=j,
-                                needs_prior_summary=len(boundary_chunks) > 0,
-                            )
+                for j, wc in enumerate(window_chunks):
+                    boundary_chunks.append(
+                        ChunkBuilder.create_chunk(
+                            text=wc.text,
+                            chapter_path=chapter_path + [boundary.title],
+                            page_range=wc.page_range,
+                            chunk_type=ChunkType.TOKEN_WINDOW,
+                            chunk_index=j,
+                            needs_prior_summary=len(boundary_chunks) > 0,
                         )
+                    )
 
         if boundary_chunks:
             return boundary_chunks
 
-    # 退回正则检测
-    # 按段落分割文本
-    paragraphs = re.split(r"\n\n+", text)
-    if len(paragraphs) <= 1:
-        return None
-
-    # 查找子标题位置
-    heading_positions: list[tuple[int, str]] = []
-
-    for i, para in enumerate(paragraphs):
-        # Markdown 子标题
-        match = _SUB_HEADING_PATTERN.match(para)
-        if match:
-            heading_positions.append((i, match.group(2).strip()))
-            continue
-
-        # 中文子标题
-        if _CN_SUB_HEADING_PATTERN.match(para):
-            # 提取标题部分（第一行）
-            first_line = para.strip().split("\n")[0]
-            heading_positions.append((i, first_line.strip()))
-            continue
-
-    if len(heading_positions) < 2:
-        return None
-
-    # 按子标题切分
-    heading_chunks: list[Chunk] = []
-    for i, (pos, title) in enumerate(heading_positions):
-        next_pos = (
-            heading_positions[i + 1][0]
-            if i + 1 < len(heading_positions)
-            else len(paragraphs)
-        )
-        sub_text = "\n\n".join(paragraphs[pos:next_pos])
-
-        if count_tokens(sub_text) <= max_tokens:
-            heading_chunks.append(
-                ChunkBuilder.create_chunk(
-                    text=sub_text,
-                    chapter_path=chapter_path + [title],
-                    page_range=page_range,
-                    chunk_type=ChunkType.SUB_SECTION,
-                    chunk_index=i,
-                    needs_prior_summary=i > 0,
-                )
-            )
-        else:
-            # 超长子节退回 token 窗口
-            window_chunks = _split_by_token_window(
-                text=sub_text,
-                chapter_path=chapter_path + [title],
-                page_range=page_range,
-                max_tokens=max_tokens,
-                overlap_tokens=overlap_tokens,
-                token_index=token_index,
-            )
-            for j, wc in enumerate(window_chunks):
-                heading_chunks.append(
-                    ChunkBuilder.create_chunk(
-                        text=wc.text,
-                        chapter_path=chapter_path + [title],
-                        page_range=wc.page_range,
-                        chunk_type=ChunkType.TOKEN_WINDOW,
-                        chunk_index=j,
-                        needs_prior_summary=(i > 0 or j > 0),
-                    )
-                )
-
-    return heading_chunks if heading_chunks else None
+    # 无预检测边界：直接返回空列表，触发调用方降级到 token 窗口
+    return []
 
 
 def _split_by_token_window(
@@ -612,16 +516,15 @@ def _split_by_token_window_with_index(
 ) -> list[Chunk]:
     """使用 token ID 池切分文本。
 
-    从 token_index 中按页码范围切取窗口，每个窗口使用 slice_window_from_index
-    获取文本和页码范围。
+    从 token_index 中按页码范围（page_range）切取窗口，每个窗口使用
+    slice_window_from_index 获取文本和页码范围。
 
-    注意：本函数假设传入的 text 对应于 page_range 范围内的页面，
-    但实际切分使用 token_index 的全局 token ID 池。
+    注意：本函数只在本章节 token 范围内切分，不跨越章节边界。
 
     Args:
         text: 待切分的 Markdown 文本（用于降级 fallback）。
         chapter_path: 章节路径。
-        page_range: 页码范围。
+        page_range: 页码范围（章节在文档中的起始和结束页码）。
         max_tokens: 单块最大 token 数。
         overlap_tokens: overlap token 数。
         token_index: PageTokenIndex。
@@ -629,16 +532,76 @@ def _split_by_token_window_with_index(
     Returns:
         Chunk 列表（至少一个元素）。
     """
-    chunks: list[Chunk] = []
-    start = 0
+    # 1. 定位章节在 token 池中的起止位置
+    chapter_start_token: int | None = None
+    end_idx: int | None = None
 
-    while start < token_index.total_tokens:
+    for i, (page_num, token_start) in enumerate(token_index.page_boundaries):
+        if page_num == page_range[0]:
+            chapter_start_token = token_start
+        if page_num == page_range[1]:
+            end_idx = i
+            break
+
+    # 如果无法定位章节范围，降级到无 index 的简单滑动窗口
+    if chapter_start_token is None or end_idx is None:
+        return _split_by_token_window_fallback(
+            text=text,
+            chapter_path=chapter_path,
+            page_range=page_range,
+            max_tokens=max_tokens,
+            overlap_tokens=overlap_tokens,
+        )
+
+    # 计算章节总 token 数（不排除分隔符，因为分隔符也是实际内容）
+    # 使用 page_boundaries 的差值来计算
+    chapter_end_idx = end_idx + 1
+    if chapter_end_idx < len(token_index.page_boundaries):
+        # 章节结束 token = 下一页的起始 token
+        chapter_end_token = token_index.page_boundaries[chapter_end_idx][1]
+    else:
+        # 最后一章，到文档末尾
+        chapter_end_token = token_index.total_tokens
+
+    # 2. 在章节 token 范围内滑动窗口
+    chunks: list[Chunk] = []
+    start = chapter_start_token
+
+    while start < chapter_end_token:
+        # 计算本窗口的实际长度（不超过章节结束位置）
+        remaining_in_chapter = chapter_end_token - start
+
+        # 修复：如果剩余 tokens 不足 overlap，不足以形成有效窗口，结束循环
+        # 必须先检查再添加 chunk，避免多添加一个窗口
+        if remaining_in_chapter <= overlap_tokens:
+            break
+
+        # 如果剩余 tokens 不足一个完整窗口，直接把剩余部分作为一个窗口
+        # 不再应用 overlap，确保覆盖所有剩余 tokens
+        if remaining_in_chapter <= max_tokens:
+            window_length = remaining_in_chapter
+        else:
+            window_length = max_tokens
+
         # 切取窗口
         window_text, actual_tokens, window_page_range = slice_window_from_index(
             index=token_index,
             start=start,
-            length=max_tokens,
+            length=window_length,
         )
+
+        # 修复：检查实际切取的 tokens 是否会导致超出章节范围
+        # slice_window_from_index 可能返回超出 chapter_end_token 的 tokens
+        if start + actual_tokens > chapter_end_token:
+            # 调整 actual_tokens 不超过剩余范围
+            actual_tokens = remaining_in_chapter
+            # 重新切取正确范围的文本
+            if actual_tokens > 0:
+                window_text, actual_tokens, window_page_range = slice_window_from_index(
+                    index=token_index,
+                    start=start,
+                    length=actual_tokens,
+                )
 
         # 如果窗口文本为空，降级到截断处理
         if not window_text:
@@ -671,13 +634,88 @@ def _split_by_token_window_with_index(
         )
 
         # 移动窗口（考虑 overlap）
-        start += max_tokens - overlap_tokens
+        # 注意：使用实际切取的 token 数 actual_tokens，而非固定的 max_tokens
+        # 因为接近章节末尾时，实际切取的 token 数可能小于 max_tokens
+        start += actual_tokens - overlap_tokens
 
     # 确保至少返回一个 chunk
     if not chunks:
         chunks.append(
             ChunkBuilder.create_chunk(
                 text=text[:1000] if text else "",  # 降级：截取前 1000 字符
+                chapter_path=chapter_path,
+                page_range=page_range,
+                chunk_type=ChunkType.TOKEN_WINDOW,
+                chunk_index=0,
+                needs_prior_summary=False,
+            )
+        )
+
+    return chunks
+
+
+def _split_by_token_window_fallback(
+    text: str,
+    chapter_path: list[str],
+    page_range: tuple[int, int],
+    *,
+    max_tokens: int,
+    overlap_tokens: int,
+) -> list[Chunk]:
+    """无 token_index 时的降级滑动窗口实现。
+
+    Args:
+        text: 待切分的 Markdown 文本。
+        chapter_path: 章节路径。
+        page_range: 页码范围。
+        max_tokens: 单块最大 token 数。
+        overlap_tokens: overlap token 数。
+
+    Returns:
+        Chunk 列表（至少一个元素）。
+    """
+    total = count_tokens(text)
+    if total <= max_tokens:
+        return [
+            ChunkBuilder.create_chunk(
+                text=text,
+                chapter_path=chapter_path,
+                page_range=page_range,
+                chunk_type=ChunkType.TOKEN_WINDOW,
+                chunk_index=0,
+                needs_prior_summary=False,
+            )
+        ]
+
+    chunks: list[Chunk] = []
+    step = max_tokens - overlap_tokens
+    start = 0
+    chunk_idx = 0
+
+    while start < total:
+        end = min(start + max_tokens, total)
+        window_text = slice_tokens(text, start, end - start)
+
+        if window_text:
+            chunks.append(
+                ChunkBuilder.create_chunk(
+                    text=window_text,
+                    chapter_path=chapter_path,
+                    page_range=page_range,
+                    chunk_type=ChunkType.TOKEN_WINDOW,
+                    chunk_index=chunk_idx,
+                    needs_prior_summary=chunk_idx > 0,
+                )
+            )
+            chunk_idx += 1
+
+        start += step
+
+    # 确保至少返回一个 chunk
+    if not chunks:
+        chunks.append(
+            ChunkBuilder.create_chunk(
+                text=text[:1000] if text else "",
                 chapter_path=chapter_path,
                 page_range=page_range,
                 chunk_type=ChunkType.TOKEN_WINDOW,

@@ -23,8 +23,13 @@ from core.data.chunker import (
     _extract_chapter_text,
     _split_by_subheadings,
     _split_by_token_window,
+    _split_by_token_window_with_index,
 )
 from core.data.token_counter import count_tokens, slice_tokens
+from core.data.token_indexer import (
+    PageTokenIndex,
+    get_chapter_token_count,
+)
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────
@@ -221,40 +226,6 @@ class TestSplitByTokenWindow:
         )
 
 
-# ── 中文编号子标题拆分测试 ────────────────────────────────────────────
-
-class TestSplitBySubheadingsChinese:
-    """中文编号子标题拆分测试。"""
-
-    def test_cn_section_pattern_split(self):
-        """含中文编号子标题（一、二、）的超长章节应按子标题拆分。
-
-        注意：当子标题下内容仍超限时，退回到 TOKEN_WINDOW 是合理的降级行为。
-        可能有 SUB_SECTION（如果内容在限制内）或 TOKEN_WINDOW（降级）或混合。
-        """
-        text = "# 第二节 公司概况\n"
-        for label in ["一、公司基本情况", "二、主要业务", "三、核心竞争力", "四、经营情况"]:
-            text += f"{label}\n" + "这是详细的正文内容描述。" * 80 + "\n\n"
-        result = _split_by_subheadings(
-            text, ["第二节 公司概况"], (2, 5), max_tokens=500, overlap_tokens=50
-        )
-        assert result is not None
-        assert len(result) >= 2
-        # 允许 SUB_SECTION 和 TOKEN_WINDOW 混合（超长内容退回是合理的降级行为）
-        assert all(c.chunk_type in (ChunkType.SUB_SECTION, ChunkType.TOKEN_WINDOW) for c in result)
-
-    def test_numeric_dot_pattern_split(self):
-        """含「1.1」「1.2」风格编号的章节应按子标题拆分。"""
-        text = "# 第三节 管理层讨论\n"
-        for sub in ["1.1 行业背景", "1.2 市场环境", "1.3 经营策略", "1.4 财务分析"]:
-            text += f"{sub}\n" + "分析内容段落。" * 80 + "\n\n"
-        result = _split_by_subheadings(
-            text, ["第三节 管理层讨论"], (3, 6), max_tokens=500, overlap_tokens=50
-        )
-        assert result is not None
-        assert len(result) >= 2
-
-
 # ── level=2 同页合并测试 ──────────────────────────────────────────────
 
 class TestLevel2SamePageMerge:
@@ -383,3 +354,206 @@ class TestContainedChapters:
         for chunk in long_chunks:
             assert len(chunk.contained_chapters) >= 1
             assert chunk.contained_chapters[0].title == "长章"
+
+
+# ── Token Window 范围限定测试（P1 Bug） ────────────────────────────────
+
+class TestSplitByTokenWindowWithIndex:
+    """_split_by_token_window_with_index 范围限定测试。
+
+    验证 token 窗口切分只在本章节 token 范围内进行，不跨越章节边界。
+    """
+
+    def _create_parsed_and_index(
+        self,
+    ) -> tuple[ParsedDocument, PageTokenIndex]:
+        """创建 3 章文档（每章约 1000 tokens）+ token_index。
+
+        每章有唯一标记文本，便于验证不包含其他章节内容。
+        """
+        from core.data.token_indexer import encode_pages_incremental
+        from core.data.models import PDFParseResult, PageChunk
+
+        # 章节 1：第 1 页，唯一标记 "CHAPTER_ONE_MARKER"
+        ch1_text = "# 第一章\n" + "CHAPTER_ONE_MARKER " * 200
+        # 章节 2：第 2-3 页，唯一标记 "CHAPTER_TWO_MARKER"
+        ch2_text = "# 第二章\n" + "CHAPTER_TWO_MARKER " * 300 + "\n\n" + "更多内容 " * 300
+        # 章节 3：第 4-5 页，唯一标记 "CHAPTER_THREE_MARKER"
+        ch3_text = "# 第三章\n" + "CHAPTER_THREE_MARKER " * 300 + "\n\n" + "更多内容 " * 300
+
+        pages = [
+            PageChunk(
+                page_number=1,
+                markdown_text=ch1_text,
+                metadata={},
+                toc_items=[],
+                page_boxes=[],
+            ),
+            PageChunk(
+                page_number=2,
+                markdown_text=ch2_text[: len(ch2_text) // 2],
+                metadata={},
+                toc_items=[],
+                page_boxes=[],
+            ),
+            PageChunk(
+                page_number=3,
+                markdown_text=ch2_text[len(ch2_text) // 2 :],
+                metadata={},
+                toc_items=[],
+                page_boxes=[],
+            ),
+            PageChunk(
+                page_number=4,
+                markdown_text=ch3_text[: len(ch3_text) // 2],
+                metadata={},
+                toc_items=[],
+                page_boxes=[],
+            ),
+            PageChunk(
+                page_number=5,
+                markdown_text=ch3_text[len(ch3_text) // 2 :],
+                metadata={},
+                toc_items=[],
+                page_boxes=[],
+            ),
+        ]
+
+        parsed = PDFParseResult(
+            source="test.pdf",
+            page_count=5,
+            chunks=pages,
+        )
+
+        token_index = encode_pages_incremental(parsed)
+        assert token_index is not None
+
+        return parsed, token_index
+
+    def test_only_covers_chapter_pages(self):
+        """验证切分结果的页码范围在章节 page_range 内。
+
+        测试场景：对第 2 章（page 2-3）调用 token 窗口切分，
+        预期所有 chunk 的 page_range 都在 [2, 3] 范围内。
+        """
+        from core.data.token_indexer import get_chapter_token_count
+        from core.data.chunker import _split_by_token_window_with_index
+
+        parsed, token_index = self._create_parsed_and_index()
+
+        # 第 2 章的 page_range = (2, 3)
+        page_range = (2, 3)
+
+        # 计算第 2 章的 token 总数
+        chapter_tokens = get_chapter_token_count(token_index, 2, 3)
+        assert chapter_tokens > 0, "第 2 章应有 token"
+
+        # 调用 _split_by_token_window_with_index（内部使用 token_index）
+        chunks = _split_by_token_window_with_index(
+            text="",  # 实际使用 token_index 切分，text 参数用于降级
+            chapter_path=["第二章"],
+            page_range=page_range,
+            max_tokens=200,  # 较小值，确保会切分
+            overlap_tokens=20,
+            token_index=token_index,
+        )
+
+        assert len(chunks) > 1, "超长章节应被切分为多个 chunk"
+
+        # 关键断言：每个 chunk 的页码范围应在 [2, 3] 内
+        for i, chunk in enumerate(chunks):
+            assert chunk.page_range[0] >= 2, (
+                f"Chunk {i} page_range[0]={chunk.page_range[0]}, expected >= 2"
+            )
+            assert chunk.page_range[1] <= 3, (
+                f"Chunk {i} page_range[1]={chunk.page_range[1]}, expected <= 3"
+            )
+
+    def test_does_not_include_other_chapter_content(self):
+        """验证切分结果不包含其他章节的文本。
+
+        测试场景：第 2 章的 chunks 不应包含第 1 章或第 3 章的唯一标记。
+        """
+        from core.data.chunker import _split_by_token_window_with_index
+
+        parsed, token_index = self._create_parsed_and_index()
+
+        # 对第 2 章（page 2-3）切分
+        page_range = (2, 3)
+
+        chunks = _split_by_token_window_with_index(
+            text="",
+            chapter_path=["第二章"],
+            page_range=page_range,
+            max_tokens=200,
+            overlap_tokens=20,
+            token_index=token_index,
+        )
+
+        # 验证每个 chunk 都不包含其他章节的标记
+        for i, chunk in enumerate(chunks):
+            assert "CHAPTER_ONE_MARKER" not in chunk.text, (
+                f"Chunk {i} should not contain Chapter 1 marker"
+            )
+            assert "CHAPTER_THREE_MARKER" not in chunk.text, (
+                f"Chunk {i} should not contain Chapter 3 marker"
+            )
+
+    def test_token_count_matches_chapter_total(self):
+        """验证最后一个 chunk 的结束位置在章节范围内。
+
+        测试场景：最后一个 chunk 应该恰好在章节结束位置结束，
+        不超出章节范围。
+        """
+        from core.data.chunker import _split_by_token_window_with_index
+
+        parsed, token_index = self._create_parsed_and_index()
+
+        # 第 2 章的 page_range = (2, 3)
+        page_range = (2, 3)
+
+        # 计算章节结束位置
+        chapter_start_token = None
+        start_idx = None
+        end_idx = None
+
+        for i, (page_num, token_start) in enumerate(token_index.page_boundaries):
+            if page_num == page_range[0]:
+                chapter_start_token = token_start
+                start_idx = i
+            if page_num == page_range[1]:
+                end_idx = i
+                break
+
+        # 章节结束位置 = 最后一页的下一页起始 token
+        chapter_end_idx = end_idx + 1
+        if chapter_end_idx < len(token_index.page_boundaries):
+            chapter_end_token = token_index.page_boundaries[chapter_end_idx][1]
+        else:
+            chapter_end_token = token_index.total_tokens
+
+        chapter_total_tokens = chapter_end_token - chapter_start_token
+
+        chunks = _split_by_token_window_with_index(
+            text="",
+            chapter_path=["第二章"],
+            page_range=page_range,
+            max_tokens=200,
+            overlap_tokens=20,
+            token_index=token_index,
+        )
+
+        # 验证最后一个 chunk 的 page_range 结束页是章节的结束页
+        last_chunk = chunks[-1]
+        assert last_chunk.page_range[1] == page_range[1], (
+            f"Last chunk page_range[1]={last_chunk.page_range[1]}, "
+            f"expected {page_range[1]}"
+        )
+
+        # 验证总 token 数不超过章节 token 数太多（考虑 overlap，允许 1 个窗口的误差）
+        total_chunk_tokens = sum(chunk.token_count for chunk in chunks)
+        max_allowed = chapter_total_tokens + 200  # 允许 1 个窗口的误差
+        assert total_chunk_tokens <= max_allowed, (
+            f"Total chunk tokens {total_chunk_tokens} exceeds "
+            f"chapter tokens {chapter_total_tokens} by too much"
+        )
