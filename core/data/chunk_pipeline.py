@@ -27,7 +27,7 @@ BYPASS_THRESHOLD_FACTOR: int = 3
 OVERLAP_TOKENS = 200
 
 # 单个 Chunk 的最大 token 数
-DEFAULT_MAX_TOKENS: int = 8000
+DEFAULT_MAX_TOKENS: int = 120_000
 
 
 async def chunk_document(
