@@ -122,3 +122,12 @@ class TestChunkPipelineBypass:
             # 每个 chunk 不超过 max_tokens
             for c in result.chunks:
                 assert c.token_count <= 100
+
+
+def test_default_max_tokens_is_120k():
+    """Given: chunk_pipeline 模块默认常量
+    When: 导入 DEFAULT_MAX_TOKENS
+    Then: 值为 120000
+    验证要点：常量已更新"""
+    from core.data.chunk_pipeline import DEFAULT_MAX_TOKENS
+    assert DEFAULT_MAX_TOKENS == 120_000

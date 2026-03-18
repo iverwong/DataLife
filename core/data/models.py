@@ -105,6 +105,23 @@ class Chunk:
     needs_prior_summary: bool = False
     chunk_index: int = 0
     contained_chapters: list[ChunkMeta] = field(default_factory=list)
+    chapter_hierarchy: list[ChapterPathEntry] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class ChapterPathEntry:
+    """章节路径条目，携带层级信息。
+
+    用于替代 chapter_path 中的纯字符串，使 LLM 能区分
+    嵌套层级（level 1 > level 2）与同级合并（level 1 + level 1）。
+
+    Attributes:
+        title: 章节标题。
+        level: 章节层级（1 为顶级）。
+    """
+
+    title: str
+    level: int
 
 
 @dataclass(frozen=True)
