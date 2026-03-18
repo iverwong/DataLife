@@ -1,59 +1,54 @@
 # 风格一致性检查清单
 
-在审查计划中的契约代码之前，先从项目已有代码中提取以下要素，作为基线进行对比。
+在委派子代理前，主代理应阅读以下项目文件并提取风格基线摘要。子代理的产出必须与基线一致。
+
+## 采集来源
+- `pyproject.toml`（linter 规则、项目配置、Python 版本）
+- `CLAUDE.md`（如存在，项目级约定）
+- 已有的抽象基类、Protocol、TypedDict 定义
+- 已有的测试文件（fixture、conftest、命名模式）
 
 ## 命名约定
-- [ ] 类名风格（PascalCase？是否有前缀/后缀约定？）
-- [ ] 函数/方法名风格（snake_case？）
-- [ ] 变量名风格
-- [ ] 常量名风格（UPPER_SNAKE_CASE？）
-- [ ] 私有成员风格（_leading_underscore？__double？）
-- [ ] 模块/文件名风格
-- [ ] 异常类命名模式（XXXError？有无统一基类？）
+- [ ] 类名：PascalCase（如 `ChunkPipeline`）
+- [ ] 函数/方法名：snake_case（如 `build_chunk`）
+- [ ] 私有函数：单下划线前缀（如 `_validate_range`）
+- [ ] 常量：UPPER_SNAKE_CASE（如 `MAX_TOKEN_COUNT`）
+- [ ] 模块名：snake_case（如 `chunk_pipeline.py`）
+- [ ] 类型别名：PascalCase（如 `PageRange = tuple[int, int]`）
 
 ## Import 组织
-- [ ] 分组方式（标准库 / 三方 / 本地）
-- [ ] 组间是否有空行
-- [ ] 排序规则（字母序？按 from / import 分？）
-- [ ] 是否使用 `from __future__ import annotations`
+- [ ] 分组顺序：标准库 → 第三方 → 本地（ruff / isort 规则）
+- [ ] `from __future__ import annotations` 是否统一使用？
+- [ ] 相对导入 vs 绝对导入的项目约定
 
 ## 类型标注
-- [ ] 可选类型写法：`Optional[X]` vs `X | None`
-- [ ] 集合类型写法：`List[X]` vs `list[X]`
-- [ ] 返回值是否总是标注
-- [ ] 是否使用 TypeVar / ParamSpec
-- [ ] Union 写法：`Union[X, Y]` vs `X | Y`
+- [ ] Union 风格：`X | None`（3.10+）vs `Optional[X]`
+- [ ] 容器风格：`list[X]`（3.9+）vs `List[X]`
+- [ ] TypedDict vs dataclass vs Pydantic model 的使用边界
+- [ ] 返回类型是否始终标注
+- [ ] 参数类型是否始终标注
 
 ## Docstring
-- [ ] 风格（Google / NumPy / reST）
-- [ ] 必须包含哪些部分（Args / Returns / Raises / Examples）
-- [ ] 语言（中文 / 英文）
-- [ ] 一行 docstring vs 多行 docstring 的使用场景
+- [ ] 风格：Google / NumPy / reST（项目统一用哪种）
+- [ ] 语言：中文 / 英文
+- [ ] 类级 docstring 是否要求
+- [ ] 函数级 docstring 是否要求（公开 / 私有）
+- [ ] Args / Returns / Raises 各段格式
 
-## 测试
-- [ ] 测试框架（pytest？unittest？）
-- [ ] 目录结构（`tests/` 镜像 `src/`？扁平？）
-- [ ] 文件命名（`test_<模块名>.py`？）
-- [ ] 函数命名（`test_<函数>_<场景>_<预期>`？）
-- [ ] Fixture 定义位置（conftest.py？测试文件内？）
-- [ ] Fixture scope 习惯
-- [ ] Mock 方式（unittest.mock / pytest-mock / monkeypatch）
-- [ ] 参数化测试方式（@pytest.mark.parametrize？）
-- [ ] assert 风格（原生 assert？pytest 断言重写？）
-
-## 错误处理
-- [ ] 自定义异常基类
-- [ ] 异常链 raise ... from ...
-- [ ] 异常消息风格
-- [ ] 是否使用 logging 记录异常
+## 异常处理
+- [ ] 自定义异常类命名（如 `XxxError` vs `XxxException`）
+- [ ] 异常类的组织位置（集中 vs 就近）
+- [ ] 异常链：是否使用 `raise ... from ...`
 
 ## 日志
-- [ ] 日志库（structlog / logging / loguru）
+- [ ] 日志库：`logging` / `loguru` / 其他
+- [ ] Logger 获取方式：`logging.getLogger(__name__)` 还是全局实例
 - [ ] 日志级别使用约定
-- [ ] 是否禁止裸 print
 
-## 项目组织
-- [ ] 源码根目录（`src/` 布局？扁平？）
-- [ ] 模块拆分粒度
-- [ ] `__init__.py` 导出策略
-- [ ] 常量/配置的组织方式
+## 测试
+- [ ] 测试文件命名：`test_<module>.py`
+- [ ] 测试类命名：`Test<Feature>`
+- [ ] 测试函数命名：`test_<scenario>`
+- [ ] fixture 组织：`conftest.py` 层级
+- [ ] mock 方式：`unittest.mock` / `pytest-mock` / 其他
+- [ ] 断言风格：`assert` 语句 vs pytest helpers
