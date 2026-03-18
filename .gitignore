@@ -56,3 +56,9 @@ Thumbs.db
 
 # ruff cache
 /.ruff_cache/
+
+# temp dir
+/temp/
+
+# plan
+/.claude/plans/

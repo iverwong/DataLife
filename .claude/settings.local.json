@@ -21,5 +21,6 @@
       "WebSearch"
     ]
   },
-  "skipWebFetchPreflight": true
+  "skipWebFetchPreflight": true,
+  "spinnerTipsEnabled": false
 }
