@@ -15,6 +15,7 @@ from typing import final
 
 from core.data.models import (
     ChapterBoundary,
+    ChapterPathEntry,
     Chunk,
     ChunkList,
     ChunkMeta,
@@ -47,6 +48,7 @@ class ChunkBuilder:
         needs_prior_summary: bool = False,
         contained_chapters: list[ChunkMeta] | None = None,
         token_count: int | None = None,
+        chapter_hierarchy: list[ChapterPathEntry] | None = None,
     ) -> Chunk:
         """创建 Chunk 实例。
 
@@ -59,6 +61,7 @@ class ChunkBuilder:
             needs_prior_summary: 是否需要前置摘要。
             contained_chapters: 包含的章节元数据列表。
             token_count: 可选的 token 计数。若传入则跳过内部 count_tokens 调用。
+            chapter_hierarchy: 章节层级结构。
         """
         return Chunk(
             text=text,
@@ -69,6 +72,7 @@ class ChunkBuilder:
             chunk_index=chunk_index,
             needs_prior_summary=needs_prior_summary,
             contained_chapters=contained_chapters or [],
+            chapter_hierarchy=chapter_hierarchy or [],
         )
 
 
@@ -144,6 +148,7 @@ def build_chunks(
                 )
                 for c in merged.original_chapters
             ]
+            hierarchy = [ChapterPathEntry(title=chapter.title, level=chapter.level)]
             chunk = ChunkBuilder.create_chunk(
                 text=chapter_text,
                 chapter_path=[chapter.title],
@@ -153,6 +158,7 @@ def build_chunks(
                 needs_prior_summary=prev_chunk_needs_summary,
                 contained_chapters=contained,
                 token_count=chapter_tokens,
+                chapter_hierarchy=hierarchy,
             )
             chunks.append(chunk)
             prev_chunk_needs_summary = True  # 下一个 chunk 需要当前 chunk 的摘要
@@ -185,7 +191,17 @@ def build_chunks(
 
             if sub_chunks:
                 # 使用子块拆分结果
+                parent_entry = ChapterPathEntry(title=chapter.title, level=chapter.level)
                 for j, sub_chunk in enumerate(sub_chunks):
+                    # 从 sub_chunk.chapter_path 提取子章节标题（防御性处理空列表）
+                    if len(sub_chunk.chapter_path) > 1:
+                        child_title = sub_chunk.chapter_path[-1]
+                    elif sub_chunk.chapter_path:
+                        child_title = sub_chunk.chapter_path[0]
+                    else:
+                        child_title = f"子块_{j}"  # fallback：空路径时用序号
+                    child_entry = ChapterPathEntry(title=child_title, level=chapter.level + 1)
+                    hierarchy = [parent_entry, child_entry]
                     chunks.append(
                         ChunkBuilder.create_chunk(
                             text=sub_chunk.text,
@@ -202,6 +218,7 @@ def build_chunks(
                                 )
                                 for c in merged.original_chapters
                             ],
+                            chapter_hierarchy=hierarchy,
                         )
                     )
                     prev_chunk_needs_summary = True
@@ -224,6 +241,7 @@ def build_chunks(
                     )
                     for c in merged.original_chapters
                 ]
+                hierarchy = [ChapterPathEntry(title=chapter.title, level=chapter.level)]
                 for j, window_chunk in enumerate(window_chunks):
                     chunks.append(
                         ChunkBuilder.create_chunk(
@@ -234,6 +252,7 @@ def build_chunks(
                             chunk_index=j,
                             needs_prior_summary=prev_chunk_needs_summary,
                             contained_chapters=original_chapters_meta,
+                            chapter_hierarchy=hierarchy,
                         )
                     )
                     prev_chunk_needs_summary = True
