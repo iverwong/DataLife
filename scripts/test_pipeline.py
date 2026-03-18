@@ -17,6 +17,9 @@ import traceback
 from pathlib import Path
 from typing import Any
 
+# 添加项目根目录到路径
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import logfire
 
 from core.data.chunk_pipeline import chunk_document
