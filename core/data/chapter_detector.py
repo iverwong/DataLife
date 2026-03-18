@@ -82,13 +82,19 @@ class BookmarkStrategy(ChapterDetectionStrategy):
             title = cast(str, toc_entry[1])
             page_number = cast(int, toc_entry[2])
 
+            # 只保留 level 1-2 的书签
+            if level > 2:
+                continue
+
             # 跳过无效页码
             if page_number < 1 or page_number > parsed.page_count:
                 continue
 
             # 验证书签：检查对应页面是否包含匹配的标题文本
+            # level 1: 必须验证书签标题与页面内容匹配
+            # level 2: 跳过验证（子章节标题可能与父章节标题不同，但位于同一页面）
             page_index = page_number - 1
-            if page_index < len(parsed.chunks):
+            if level == 1 and page_index < len(parsed.chunks):
                 page_text = parsed.chunks[page_index].markdown_text
                 # 模糊匹配：去除空格后比较
                 normalized_title = title.replace(" ", "").replace("\u3000", "")
@@ -97,7 +103,7 @@ class BookmarkStrategy(ChapterDetectionStrategy):
                 )
 
                 if normalized_title not in normalized_page:
-                    return None  # 验证失败则降级
+                    continue  # 跳过该条，不整批降级
 
             # 创建边界
             boundary = ChapterBoundary(
@@ -159,6 +165,10 @@ class TocPageStrategy(ChapterDetectionStrategy):
         r"^(.+?)\s*[.…·\-_]{3,}\s*(\d+(?:\s+\d+)*)\s*$",
         re.MULTILINE,
     )
+    # 紧凑目录项正则：匹配同一行内的 "章节名 ....... 页码" 模式
+    TOC_COMPACT_PATTERN: re.Pattern[str] = re.compile(
+        r"((?:[第]\S+[节章]\s+)?\S{2,30})\s*[.…·\-_]{3,}\s*(\d+)"
+    )
     # 搜索目录的最大页数范围
     MAX_SEARCH_PAGES: int = 10
 
@@ -183,12 +193,23 @@ class TocPageStrategy(ChapterDetectionStrategy):
         toc_page_text = parsed.chunks[toc_page_idx].markdown_text
         entries: list[tuple[str, int]] = []
 
+        # 优先尝试多行格式
         for match in self.TOC_ENTRY_PATTERN.finditer(toc_page_text):
             title = match.group(1).strip()
             page_num = int(
                 re.sub(r"\s+", "", match.group(2))
             )  # 增加了捕获和处理页码中间有空格的情况
             entries.append((title, page_num))
+
+        # 多行格式不足 2 项时，尝试紧凑格式
+        if len(entries) < 2:
+            entries = []
+            for match in self.TOC_COMPACT_PATTERN.finditer(toc_page_text):
+                title = match.group(1).strip()
+                page_num = int(match.group(2))
+                # 页码范围预过滤：排除明显不合理的页码，降低误匹配风险
+                if 1 <= page_num <= parsed.page_count:
+                    entries.append((title, page_num))
 
         if len(entries) < 2:
             return None
@@ -295,7 +316,7 @@ class HeadingStrategy(ChapterDetectionStrategy):
 
     # Markdown 标题检测正则
     MARKDOWN_HEADING_PATTERN: re.Pattern[str] = re.compile(
-        r"^(#{1,3})\s+(.+)$",
+        r"^(#{1,2})\s+(.+)$",
         re.MULTILINE,
     )
 
