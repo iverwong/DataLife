@@ -24,7 +24,7 @@ from core.data.token_indexer import (
 BYPASS_THRESHOLD_FACTOR: int = 3
 
 # overlap重叠token数
-OVERLAP_TOKENS = 200
+OVERLAP_TOKENS = 1500
 
 # 单个 Chunk 的最大 token 数
 DEFAULT_MAX_TOKENS: int = 120_000
