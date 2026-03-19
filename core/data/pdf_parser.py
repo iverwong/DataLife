@@ -253,6 +253,7 @@ def _parse_document(
         page_chunks=True,
         force_text=True,
         show_progress=False,
+        use_ocr=False,
     )
 
     chunks: list[PageChunk] = []
