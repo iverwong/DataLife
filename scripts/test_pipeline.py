@@ -55,14 +55,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-tokens",
         type=int,
-        default=300000,
-        help="单 Chunk 最大 token 数，默认 300000（300K）",
+        default=120_000,
+        help="单 Chunk 最大 token 数，默认 120k",
     )
     parser.add_argument(
         "--overlap",
         type=int,
-        default=1000,
-        help="相邻 Chunk 重叠 token 数，默认 1000（1K）",
+        default=1500,
+        help="相邻 Chunk 重叠 token 数，默认 1500",
     )
     parser.add_argument(
         "--log-level",
@@ -343,7 +343,7 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     print(f"报告日期: {report_date}")
     print(f"Max Tokens: {args.max_tokens}")
     print(f"Overlap: {args.overlap}")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     # 创建输出目录
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -418,11 +418,15 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     total_elapsed = time.time() - start_time
     result["total_elapsed"] = round(total_elapsed, 2)
 
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print("执行汇总")
-    print(f"{'='*60}")
-    print(f"Step 1 (PDF 解析): {'✓ 成功' if result['step1_success'] else '✗ 失败'} ({result.get('step1_elapsed', 0)}s)")
-    print(f"Step 2 (逻辑分块): {'✓ 成功' if result['step2_success'] else '✗ 失败'} ({result.get('step2_elapsed', 0)}s)")
+    print(f"{'=' * 60}")
+    print(
+        f"Step 1 (PDF 解析): {'✓ 成功' if result['step1_success'] else '✗ 失败'} ({result.get('step1_elapsed', 0)}s)"
+    )
+    print(
+        f"Step 2 (逻辑分块): {'✓ 成功' if result['step2_success'] else '✗ 失败'} ({result.get('step2_elapsed', 0)}s)"
+    )
     print(f"总耗时: {total_elapsed:.2f}s")
 
     if result["error"]:
