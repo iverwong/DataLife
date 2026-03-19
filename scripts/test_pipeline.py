@@ -66,8 +66,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--log-level",
-        default="INFO",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        default="info",
+        choices=["debug", "info", "warning", "error"],
         help="日志级别",
     )
     return parser.parse_args()
@@ -442,6 +442,7 @@ def main() -> None:
     # 配置日志（仅输出到控制台）
     logfire.configure(
         send_to_logfire=False,  # 禁用 logfire 发送，仅输出到控制台
+        min_level=args.log_level,
     )
 
     result = run_pipeline(args)
