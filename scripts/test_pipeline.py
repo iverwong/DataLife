@@ -22,9 +22,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import logfire
 
-from core.data.chunk_pipeline import chunk_document
+from core.data.chunking.chunk_pipeline import chunk_document
 from core.data.models import ChunkList, PDFParseResult
-from core.data.pdf_parser import parse_pdf
+from core.data.parsing.pdf_parser import parse_pdf
 
 
 def parse_args() -> argparse.Namespace:

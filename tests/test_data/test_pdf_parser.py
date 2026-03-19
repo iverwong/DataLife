@@ -20,7 +20,7 @@ import pymupdf
 import pytest
 
 from core.data.models import PageChunk, PDFParseResult
-from core.data.pdf_parser import (
+from core.data.parsing.pdf_parser import (
     PDFCorruptedError,
     PDFEncryptedError,
     PDFFileNotFoundError,
@@ -286,7 +286,7 @@ class TestCleanMarkdown:
 
     def test_number_with_spaces_removed(self):
         """带前后空格的数字行应被移除。"""
-        from core.data.pdf_parser import _clean_markdown
+        from core.data.parsing.pdf_parser import _clean_markdown
 
         text = "正文内容\n\n  123  \n\n更多正文"
         result = _clean_markdown(text)
@@ -294,7 +294,7 @@ class TestCleanMarkdown:
 
     def test_multi_digit_page_number_removed(self):
         """多位数页码（如   123   ）应被移除。"""
-        from core.data.pdf_parser import _clean_markdown
+        from core.data.parsing.pdf_parser import _clean_markdown
 
         text = "第一章 内容\n\n  123  \n\n第二章 内容"
         result = _clean_markdown(text)
@@ -309,7 +309,7 @@ class TestCleanMarkdown:
         注意：当前实现会误删这种情况，这是边界行为。
         如果需要保留行内数字，需要修改正则表达式。
         """
-        from core.data.pdf_parser import _clean_markdown
+        from core.data.parsing.pdf_parser import _clean_markdown
 
         text = "资产\n\n100\n\n负债"
         result = _clean_markdown(text)
@@ -320,21 +320,21 @@ class TestCleanMarkdown:
 
     def test_empty_string_input(self):
         """空字符串输入应返回空字符串。"""
-        from core.data.pdf_parser import _clean_markdown
+        from core.data.parsing.pdf_parser import _clean_markdown
 
         result = _clean_markdown("")
         assert result == ""
 
     def test_only_whitespace_input(self):
         """纯空白输入应返回空字符串。"""
-        from core.data.pdf_parser import _clean_markdown
+        from core.data.parsing.pdf_parser import _clean_markdown
 
         result = _clean_markdown("   \n\n   ")
         assert result == ""
 
     def test_multiple_consecutive_empty_lines_collapsed(self):
         """连续 3+ 空行应合并为 2 个。"""
-        from core.data.pdf_parser import _clean_markdown
+        from core.data.parsing.pdf_parser import _clean_markdown
 
         text = "第一章\n\n\n\n\n第二章"
         result = _clean_markdown(text)
