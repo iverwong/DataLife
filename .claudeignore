@@ -1,0 +1,2 @@
+# Allow Claude Code to search these files/directories
+!.claude/plans/
