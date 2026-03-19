@@ -46,11 +46,11 @@ class TestChunkPipelineBypass:
 
         fixture 设计：max_tokens=100, overlap_tokens=20, 文档约 50 tokens (<= 100)
         """
-        from core.data.chunk_pipeline import chunk_document
+        from core.data.chunking.chunk_pipeline import chunk_document
 
         parsed, content = _make_parsed_doc(50)
-        with patch("core.data.chunk_pipeline.pymupdf") as mock_pymupdf, \
-             patch("core.data.chunk_pipeline.detect_chapters") as mock_detect:
+        with patch("core.data.chunking.chunk_pipeline.pymupdf") as mock_pymupdf, \
+             patch("core.data.chunking.chunk_pipeline.detect_chapters") as mock_detect:
             mock_doc = mock_pymupdf.open.return_value
             mock_doc.close = lambda: None
             result = await chunk_document(
@@ -68,12 +68,12 @@ class TestChunkPipelineBypass:
 
         fixture 设计：max_tokens=100, overlap_tokens=20, 文档约 200 tokens (> 100)
         """
-        from core.data.chunk_pipeline import chunk_document
+        from core.data.chunking.chunk_pipeline import chunk_document
 
         parsed, content = _make_parsed_doc(200)
-        with patch("core.data.chunk_pipeline.pymupdf") as mock_pymupdf, \
-             patch("core.data.chunk_pipeline.detect_chapters", return_value=[]) as mock_detect, \
-             patch("core.data.chunk_pipeline.build_chunks") as mock_build:
+        with patch("core.data.chunking.chunk_pipeline.pymupdf") as mock_pymupdf, \
+             patch("core.data.chunking.chunk_pipeline.detect_chapters", return_value=[]) as mock_detect, \
+             patch("core.data.chunking.chunk_pipeline.build_chunks") as mock_build:
             mock_doc = mock_pymupdf.open.return_value
             mock_doc.close = lambda: None
             mock_build.return_value = ChunkList(
@@ -91,10 +91,10 @@ class TestChunkPipelineBypass:
 
         fixture 设计：max_tokens=8000, 文档约 100 tokens
         """
-        from core.data.chunk_pipeline import chunk_document
+        from core.data.chunking.chunk_pipeline import chunk_document
 
         parsed, content = _make_parsed_doc(100)
-        with patch("core.data.chunk_pipeline.pymupdf") as mock_pymupdf:
+        with patch("core.data.chunking.chunk_pipeline.pymupdf") as mock_pymupdf:
             mock_doc = mock_pymupdf.open.return_value
             mock_doc.close = lambda: None
             result = await chunk_document(
@@ -109,5 +109,5 @@ def test_default_max_tokens_is_120k():
     When: 导入 DEFAULT_MAX_TOKENS
     Then: 值为 120000
     验证要点：常量已更新"""
-    from core.data.chunk_pipeline import DEFAULT_MAX_TOKENS
+    from core.data.chunking.chunk_pipeline import DEFAULT_MAX_TOKENS
     assert DEFAULT_MAX_TOKENS == 120_000

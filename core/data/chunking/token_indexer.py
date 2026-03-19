@@ -11,7 +11,7 @@ import bisect
 from dataclasses import dataclass
 
 from core.data.models import ParsedDocument
-from core.data.token_counter import get_encoder
+from .token_counter import get_encoder
 
 
 @dataclass(frozen=True)

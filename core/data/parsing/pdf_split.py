@@ -14,7 +14,7 @@ import logfire
 from core.models.announcement import AnnouncementWithHash
 from core.utils import gather_with_concurrency, get_pdf_download_semaphore
 
-from .announcement import AnnouncementWithContent
+from core.data.announcement import AnnouncementWithContent
 
 CHUNK_SIZE = 20
 """每个分割块的最大页数。"""

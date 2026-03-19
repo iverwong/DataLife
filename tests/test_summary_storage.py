@@ -6,13 +6,13 @@ from __future__ import annotations
 
 import pytest
 
-from core.data.summary_models import (
+from core.data.summarizing.summary_models import (
     ChapterSummary,
     ChunkSummaryOutput,
     DocumentSummary,
     KeyDataItem,
 )
-from core.data.summary_storage import (
+from core.data.summarizing.summary_storage import (
     load_document_summary,
     save_chapter_summary,
     save_chunk_summary,

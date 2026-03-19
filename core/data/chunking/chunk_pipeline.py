@@ -9,12 +9,12 @@ from __future__ import annotations
 import logfire
 import pymupdf
 
-from core.data.chapter_detector import detect_chapters
-from core.data.chunk_storage import save_chunks
-from core.data.chunker import build_chunks
+from .chapter_detector import detect_chapters
+from .chunk_storage import save_chunks
+from .chunker import build_chunks
 from core.data.exceptions import InvalidChunkingParameterError
 from core.data.models import Chunk, ChunkList, ChunkType, ParsedDocument
-from core.data.token_indexer import (
+from .token_indexer import (
     encode_pages_incremental,
     slice_window_from_index,
 )

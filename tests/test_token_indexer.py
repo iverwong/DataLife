@@ -8,8 +8,8 @@ from __future__ import annotations
 import array
 
 from core.data.models import PageChunk, PDFParseResult
-from core.data.token_counter import count_tokens, get_encoder
-from core.data.token_indexer import (
+from core.data.chunking.token_counter import count_tokens, get_encoder
+from core.data.chunking.token_indexer import (
     PageTokenIndex,
     encode_pages_incremental,
     find_page_at_token,

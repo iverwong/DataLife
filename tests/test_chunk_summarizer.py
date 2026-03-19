@@ -12,8 +12,8 @@ import pytest
 from unittest.mock import AsyncMock, patch
 
 from core.data.models import Chunk, ChunkType
-from core.data.summary_models import ChunkSummaryOutput
-from core.data.chunk_summarizer import (
+from core.data.summarizing.summary_models import ChunkSummaryOutput
+from core.data.summarizing.chunk_summarizer import (
     DEFAULT_MODEL,
     DEFAULT_TEMPERATURE,
     SummarizeContext,
@@ -120,7 +120,7 @@ class TestSummarizeChunk:
         )
         # mock PydanticAI Agent.run
         with patch(
-            "core.data.chunk_summarizer._run_agent",
+            "core.data.summarizing.chunk_summarizer._run_agent",
             new_callable=AsyncMock,
             return_value=mock_summary_output,
         ):
@@ -141,7 +141,7 @@ class TestSummarizeChunk:
             chunk_index=0,
         )
         with patch(
-            "core.data.chunk_summarizer._run_agent",
+            "core.data.summarizing.chunk_summarizer._run_agent",
             new_callable=AsyncMock,
             side_effect=LLMResponseError("Empty response from LLM"),
         ):
@@ -171,7 +171,7 @@ class TestSummarizeChunk:
             return mock_summary_output
 
         with patch(
-            "core.data.chunk_summarizer._run_agent",
+            "core.data.summarizing.chunk_summarizer._run_agent",
             new_callable=AsyncMock,
             side_effect=mock_run,
         ):

@@ -1,7 +1,7 @@
 """Token 计数模块测试。"""
 from __future__ import annotations
 
-from core.data.token_counter import count_tokens, slice_tokens
+from core.data.chunking.token_counter import count_tokens, slice_tokens
 
 
 class TestCountTokens:

@@ -13,7 +13,7 @@ import pytest
 from sqlalchemy.dialects import sqlite
 
 from core.data.models import ChunkMeta
-from core.data.summary_models import ChunkSummaryOutput, KeyDataItem, PeriodInfo
+from core.data.summarizing.summary_models import ChunkSummaryOutput, KeyDataItem, PeriodInfo
 
 
 class TestJsonChunkMetaList:

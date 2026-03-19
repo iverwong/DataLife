@@ -25,7 +25,7 @@ from sqlalchemy.orm import (
 from sqlalchemy.schema import SchemaItem
 
 from core.data.models import ChunkMeta
-from core.data.summary_models import ChunkSummaryOutput, KeyDataItem
+from core.data.summarizing.summary_models import ChunkSummaryOutput, KeyDataItem
 from core.db.types import (
     json_dataclass,
     json_pydantic,
