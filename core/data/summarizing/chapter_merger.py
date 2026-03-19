@@ -21,7 +21,7 @@ from pydantic_ai.providers.deepseek import DeepSeekProvider
 from pydantic_ai.settings import ModelSettings
 
 from core.data.exceptions import LLMResponseError
-from core.data.summary_models import ChapterSummary, ChunkSummaryOutput, KeyDataItem
+from .summary_models import ChapterSummary, ChunkSummaryOutput, KeyDataItem
 
 if TYPE_CHECKING:
     pass

@@ -9,7 +9,7 @@ from datetime import datetime
 
 from sqlalchemy import select
 
-from core.data.summary_models import (
+from .summary_models import (
     ChapterSummary,
     ChunkSummaryOutput,
     DocumentSummary,

@@ -10,8 +10,8 @@ from __future__ import annotations
 import pytest
 from unittest.mock import AsyncMock, patch
 
-from core.data.summary_models import ChapterSummary, ChunkSummaryOutput
-from core.data.chapter_merger import (
+from core.data.summarizing.summary_models import ChapterSummary, ChunkSummaryOutput
+from core.data.summarizing.chapter_merger import (
     build_single_chunk_chapter,
     merge_chapter_summaries,
 )
@@ -91,7 +91,7 @@ class TestMergeChapterSummaries:
     ) -> None:
         """多子块调用 LLM 合并，返回合并后的 ChapterSummary。"""
         with patch(
-            "core.data.chapter_merger._run_merge_agent",
+            "core.data.summarizing.chapter_merger._run_merge_agent",
             new_callable=AsyncMock,
             return_value=merged_output,
         ):
@@ -109,7 +109,7 @@ class TestMergeChapterSummaries:
     ) -> None:
         """合并 LLM 失败时降级为子块摘要拼接。"""
         with patch(
-            "core.data.chapter_merger._run_merge_agent",
+            "core.data.summarizing.chapter_merger._run_merge_agent",
             new_callable=AsyncMock,
             side_effect=Exception("LLM merge failed"),
         ):

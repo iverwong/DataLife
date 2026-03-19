@@ -4,10 +4,10 @@
 
 依赖：
 - core.data.models：ChunkList
-- core.data.summary_models：DocumentSummary
-- core.data.chunk_summarizer：summarize_chunk, build_summarize_context
-- core.data.chapter_merger：merge_chapter_summaries, build_single_chunk_chapter
-- core.data.summary_storage：save_*
+- summarizing.summary_models：DocumentSummary
+- summarizing.chunk_summarizer：summarize_chunk, build_summarize_context
+- summarizing.chapter_merger：merge_chapter_summaries, build_single_chunk_chapter
+- summarizing.summary_storage：save_*
 """
 from __future__ import annotations
 
@@ -16,15 +16,15 @@ from typing import TYPE_CHECKING
 
 import logfire
 
-from core.data.chapter_merger import build_single_chunk_chapter, merge_chapter_summaries
-from core.data.chunk_summarizer import build_summarize_context, summarize_chunk
-from core.data.summary_models import (
+from .chapter_merger import build_single_chunk_chapter, merge_chapter_summaries
+from .chunk_summarizer import build_summarize_context, summarize_chunk
+from .summary_models import (
     ChapterSummary,
     ChunkSummaryOutput,
     DocumentSummary,
     KeyDataItem,
 )
-from core.data.summary_storage import (
+from .summary_storage import (
     save_chapter_summary,
     save_document_summary,
 )

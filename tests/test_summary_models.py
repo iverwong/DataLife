@@ -2,7 +2,7 @@
 import pytest
 from pydantic import ValidationError
 
-from core.data.summary_models import (
+from core.data.summarizing.summary_models import (
     ChapterSummary,
     ChunkSummaryOutput,
     DocumentSummary,

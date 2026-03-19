@@ -24,7 +24,7 @@ from pydantic_ai.settings import ModelSettings
 
 from core.data.exceptions import LLMResponseError
 from core.data.models import Chunk
-from core.data.summary_models import ChunkSummaryOutput
+from .summary_models import ChunkSummaryOutput
 
 if TYPE_CHECKING:
     from core.data.models import ChunkMeta

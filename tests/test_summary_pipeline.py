@@ -10,11 +10,11 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from core.data.models import Chunk, ChunkList, ChunkType
-from core.data.summary_models import (
+from core.data.summarizing.summary_models import (
     ChunkSummaryOutput,
     DocumentSummary,
 )
-from core.data.summary_pipeline import summarize_document
+from core.data.summarizing.summary_pipeline import summarize_document
 
 
 # ── Fixtures ────────────────────────────────────────────
@@ -104,14 +104,14 @@ class TestSummarizeDocument:
         )
 
         with patch(
-            "core.data.summary_pipeline.summarize_chunk",
+            "core.data.summarizing.summary_pipeline.summarize_chunk",
             new_callable=AsyncMock,
             side_effect=mock_summarize,
         ), patch(
-            "core.data.summary_pipeline.merge_chapter_summaries",
+            "core.data.summarizing.summary_pipeline.merge_chapter_summaries",
             new_callable=AsyncMock,
             return_value=pytest.importorskip(
-                "core.data.summary_models"
+                "core.data.summarizing.summary_models"
             ).ChapterSummary(
                 chapter_title="第二节",
                 chapter_path=["第二节"],
@@ -154,14 +154,14 @@ class TestSummarizeDocument:
             )
 
         with patch(
-            "core.data.summary_pipeline.summarize_chunk",
+            "core.data.summarizing.summary_pipeline.summarize_chunk",
             new_callable=AsyncMock,
             side_effect=mock_summarize,
         ), patch(
-            "core.data.summary_pipeline.merge_chapter_summaries",
+            "core.data.summarizing.summary_pipeline.merge_chapter_summaries",
             new_callable=AsyncMock,
             return_value=pytest.importorskip(
-                "core.data.summary_models"
+                "core.data.summarizing.summary_models"
             ).ChapterSummary(
                 chapter_title="第二节",
                 chapter_path=["第二节"],
