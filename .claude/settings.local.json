@@ -14,8 +14,7 @@
       "Bash(./venv/Scripts/activate:*)",
       "Bash(where ruff:*)",
       "WebFetch(domain:ai.pydantic.dev)",
-      "WebFetch(domain:docs.pydantic.ai)",
-      "WebFetch(domain:ai.pydantic.org.cn)"
+      "WebFetch(domain:github.com)"
     ],
     "deny": [
       "WebSearch"

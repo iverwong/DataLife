@@ -191,7 +191,9 @@ def build_chunks(
 
             if sub_chunks:
                 # 使用子块拆分结果
-                parent_entry = ChapterPathEntry(title=chapter.title, level=chapter.level)
+                parent_entry = ChapterPathEntry(
+                    title=chapter.title, level=chapter.level
+                )
                 for j, sub_chunk in enumerate(sub_chunks):
                     # 从 sub_chunk.chapter_path 提取子章节标题（防御性处理空列表）
                     if len(sub_chunk.chapter_path) > 1:
@@ -200,12 +202,14 @@ def build_chunks(
                         child_title = sub_chunk.chapter_path[0]
                     else:
                         child_title = f"子块_{j}"  # fallback：空路径时用序号
-                    child_entry = ChapterPathEntry(title=child_title, level=chapter.level + 1)
+                    child_entry = ChapterPathEntry(
+                        title=child_title, level=chapter.level + 1
+                    )
                     hierarchy = [parent_entry, child_entry]
                     chunks.append(
                         ChunkBuilder.create_chunk(
                             text=sub_chunk.text,
-                            chapter_path=[chapter.title] + sub_chunk.chapter_path,
+                            chapter_path=sub_chunk.chapter_path,
                             page_range=sub_chunk.page_range,
                             chunk_type=sub_chunk.chunk_type,  # 保留原始类型
                             chunk_index=j,
@@ -320,7 +324,7 @@ def _merge_same_page_boundaries(
             title=" / ".join(c.title for c in current_originals),
             level=min(c.level for c in current_originals),
             start_page=current.start_page,
-            end_page=current.start_page,
+            end_page=current.end_page,
             source=current_originals[0].source,
         )
         result.append(
