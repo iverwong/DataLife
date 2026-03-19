@@ -11,8 +11,7 @@ from typing import Any, override
 from pydantic_ai import Agent, ModelRetry, RunContext
 
 from core.agents.base import AgentConfig
-from core.data.summarizing.chunk_summarizer import SummarizeContext
-from core.data.summarizing.summary_models import ChunkSummaryOutput
+from core.data.summarizing.summary_models import ChunkSummaryOutput, SummarizeContext
 
 # 从 chunk_summarizer.py 复制 system prompt 内容
 _CHUNK_SUMMARIZER_SYSTEM_PROMPT = """你是一名专业的文档摘要分析师，专门处理A股上市公司年报、半年报、季报等公告文档。

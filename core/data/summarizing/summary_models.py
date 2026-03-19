@@ -5,7 +5,26 @@
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from pydantic import BaseModel, Field
+
+
+@dataclass(frozen=True)
+class SummarizeContext:
+    """摘要上下文依赖，注入 Agent 的 deps。
+
+    Attributes:
+        context_brief: 前一个 Chunk 的 context_brief，None 表示当前为首块
+        chapter_path: 当前 Chunk 的章节路径
+        contained_chapters: 当前 Chunk 包含的章节列表（多章节场景）
+        chunk_index: 当前 Chunk 在章节内的索引
+    """
+
+    context_brief: str | None
+    chapter_path: list[str]
+    contained_chapters: list[str] | None
+    chunk_index: int
 
 
 class PeriodInfo(BaseModel):
