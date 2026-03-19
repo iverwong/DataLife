@@ -14,8 +14,6 @@ from unittest.mock import AsyncMock, patch
 from core.data.models import Chunk, ChunkType
 from core.data.summarizing.summary_models import ChunkSummaryOutput
 from core.data.summarizing.chunk_summarizer import (
-    DEFAULT_MODEL,
-    DEFAULT_TEMPERATURE,
     SummarizeContext,
     build_summarize_context,
     summarize_chunk,
@@ -118,11 +116,13 @@ class TestSummarizeChunk:
             contained_chapters=None,
             chunk_index=0,
         )
-        # mock PydanticAI Agent.run
+        # mock AgentRunner class to avoid __aenter__ calling real DeepSeekProvider
+        mock_runner = AsyncMock()
+        mock_runner.run.return_value = mock_summary_output  # type: ignore[reportAny]
+        mock_runner.__aenter__.return_value = mock_runner  # type: ignore[reportAny]
         with patch(
-            "core.data.summarizing.chunk_summarizer._run_agent",
-            new_callable=AsyncMock,
-            return_value=mock_summary_output,
+            "core.data.summarizing.chunk_summarizer.AgentRunner",
+            return_value=mock_runner,
         ):
             result = await summarize_chunk(sample_chunk, ctx)
         assert isinstance(result, ChunkSummaryOutput)
@@ -141,7 +141,7 @@ class TestSummarizeChunk:
             chunk_index=0,
         )
         with patch(
-            "core.data.summarizing.chunk_summarizer._run_agent",
+            "core.agents.AgentRunner.run",
             new_callable=AsyncMock,
             side_effect=LLMResponseError("Empty response from LLM"),
         ):
@@ -164,16 +164,18 @@ class TestSummarizeChunk:
         )
         captured_prompts: list[str] = []
 
-        async def mock_run(*args, **kwargs):
+        async def mock_run(prompt: str, **_kwargs: object) -> ChunkSummaryOutput:
             # 捕获传入的 user prompt 以验证 context_brief 注入
-            if "user_prompt" in kwargs:
-                captured_prompts.append(kwargs["user_prompt"])
+            captured_prompts.append(prompt)
             return mock_summary_output
 
+        # mock AgentRunner class to avoid __aenter__ calling real DeepSeekProvider
+        mock_runner = AsyncMock()
+        mock_runner.run.side_effect = mock_run  # type: ignore[reportAny]
+        mock_runner.__aenter__.return_value = mock_runner  # type: ignore[reportAny]
         with patch(
-            "core.data.summarizing.chunk_summarizer._run_agent",
-            new_callable=AsyncMock,
-            side_effect=mock_run,
+            "core.data.summarizing.chunk_summarizer.AgentRunner",
+            return_value=mock_runner,
         ):
             await summarize_chunk(sample_chunk_with_prior, ctx)
         # 验证 context_brief 出现在 prompt 中
