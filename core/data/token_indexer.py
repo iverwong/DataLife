@@ -31,22 +31,17 @@ class PageTokenIndex:
 
 def encode_pages_incremental(
     parsed: ParsedDocument,
-    threshold: int | None = None,
-) -> PageTokenIndex | None:
+) -> PageTokenIndex:
     """逐页编码 ParsedDocument，累积 token IDs 到 array.array。
 
     逐页调用 encoder.encode()，记录页码边界。
     页间以 "\\n\\n" 分隔（与 ParsedDocument.full_text 保持一致）。
 
-    如果设置了 threshold 且累积 token 数超过该值，提前返回 None。
-    如果未设置 threshold，始终编码所有页面。
-
     Args:
         parsed: Step 1 产出的 ParsedDocument。
-        threshold: 可选，token 总数阈值。超过时提前返回 None。
 
     Returns:
-        PageTokenIndex，或 None（仅在设置 threshold 且超过时）。
+        PageTokenIndex。
     """
     encoder = get_encoder()
 
@@ -70,10 +65,6 @@ def encode_pages_incremental(
         # 非最后一页时追加分隔符 token
         if idx < parsed.page_count - 1:
             token_ids.extend(separator_ids)
-
-        # 逐页累积检查 threshold，大文档可提前退出，无需编码所有页面
-        if threshold is not None and len(token_ids) > threshold:
-            return None
 
     return PageTokenIndex(
         token_ids=token_ids,

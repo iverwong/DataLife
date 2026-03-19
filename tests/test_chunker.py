@@ -15,6 +15,7 @@ from core.data.models import (
     ParsedDocument,
     ParsedPage,
     ChapterBoundary,
+    ChapterPathEntry,
     ChunkList,
     ChunkType,
 )
@@ -646,3 +647,79 @@ class TestSplitBySubheadingsTokenIndex:
         # 验证 token_count 使用了 count_tokens 的结果
         expected_tokens = count_tokens(chunk.text)
         assert chunk.token_count == expected_tokens
+
+
+# ── chapter_hierarchy 结构化层级信息测试 ───────────────────────────────────
+
+class TestChapterHierarchy:
+    """Chunk.chapter_hierarchy 结构化层级信息测试。
+    覆盖范围：完整章节、子章节拆分、同页合并的 hierarchy 填充。
+    """
+
+    def test_complete_chapter_has_hierarchy(self):
+        """Given: 短文档的完整章节 Chunk
+        When: build_chunks 产出 Chunk
+        Then: chapter_hierarchy 包含一个 level=1 的条目
+        验证要点：ChapterPathEntry(title, level) 正确填充"""
+        pages = [
+            ParsedPage(page_number=1, markdown_text="# 第一章\n" + "正文。" * 50),
+            ParsedPage(page_number=2, markdown_text="# 第二章\n" + "正文。" * 50),
+        ]
+        parsed = ParsedDocument(source="test.pdf", page_count=2, chunks=pages)
+        chapters = [
+            ChapterBoundary(title="第一章", level=1, start_page=1, end_page=1, source="heading"),
+            ChapterBoundary(title="第二章", level=1, start_page=2, end_page=2, source="heading"),
+        ]
+        result = build_chunks(parsed, chapters, max_tokens=8000, overlap_tokens=200)
+        for chunk in result.chunks:
+            assert len(chunk.chapter_hierarchy) >= 1
+            assert isinstance(chunk.chapter_hierarchy[0], ChapterPathEntry)
+            assert chunk.chapter_hierarchy[0].level == 1
+
+    def test_sub_section_hierarchy_has_parent_and_child(self):
+        """Given: 超长章节被 level 2 子边界拆分
+        When: build_chunks 产出子块
+        Then: chapter_hierarchy 包含 [level=1 父章节, level=2 子章节]
+        验证要点：层级嵌套关系正确"""
+        page1 = ParsedPage(page_number=1, markdown_text="# 短章\n短内容")
+        long_text = "长内容。" * 500
+        page2 = ParsedPage(page_number=2, markdown_text=long_text[:len(long_text)//2])
+        page3 = ParsedPage(page_number=3, markdown_text=long_text[len(long_text)//2:])
+        parsed = ParsedDocument(source="test.pdf", page_count=3, chunks=[page1, page2, page3])
+        chapters = [
+            ChapterBoundary(title="短章", level=1, start_page=1, end_page=1, source="bookmark"),
+            ChapterBoundary(title="长章", level=1, start_page=2, end_page=3, source="bookmark"),
+            ChapterBoundary(title="子节A", level=2, start_page=2, end_page=2, source="bookmark"),
+            ChapterBoundary(title="子节B", level=2, start_page=3, end_page=3, source="bookmark"),
+        ]
+        result = build_chunks(parsed, chapters, max_tokens=300, overlap_tokens=30)
+        sub_chunks = [c for c in result.chunks if c.page_range != (1, 1)]
+        for chunk in sub_chunks:
+            assert len(chunk.chapter_hierarchy) >= 1
+            assert chunk.chapter_hierarchy[0].level == 1
+            assert chunk.chapter_hierarchy[0].title == "长章"
+            if chunk.chunk_type == ChunkType.SUB_SECTION:
+                assert len(chunk.chapter_hierarchy) == 2
+                assert chunk.chapter_hierarchy[1].level == 2
+
+    def test_hierarchy_fallback_on_empty_chapter_path(self):
+        """Given: 超长章节降级到 token 窗口（无子边界，chapter_path 只有父级）
+        When: build_chunks 产出窗口 chunk
+        Then: chapter_hierarchy 至少包含父级条目，不抛 IndexError
+        验证要点：空子路径的防御性处理"""
+        long_text = "长内容。" * 500
+        page1 = ParsedPage(page_number=1, markdown_text="# 短章\n短内容")
+        page2 = ParsedPage(page_number=2, markdown_text=long_text[:len(long_text)//2])
+        page3 = ParsedPage(page_number=3, markdown_text=long_text[len(long_text)//2:])
+        parsed = ParsedDocument(source="test.pdf", page_count=3, chunks=[page1, page2, page3])
+        # 只有 level 1 章节，无 level 2 子边界 → 超长时走 token 窗口兜底
+        chapters = [
+            ChapterBoundary(title="短章", level=1, start_page=1, end_page=1, source="bookmark"),
+            ChapterBoundary(title="长章", level=1, start_page=2, end_page=3, source="bookmark"),
+        ]
+        result = build_chunks(parsed, chapters, max_tokens=300, overlap_tokens=30)
+        window_chunks = [c for c in result.chunks if c.chunk_type == ChunkType.TOKEN_WINDOW]
+        for chunk in window_chunks:
+            assert len(chunk.chapter_hierarchy) >= 1
+            assert chunk.chapter_hierarchy[0].title == "长章"
+            assert chunk.chapter_hierarchy[0].level == 1

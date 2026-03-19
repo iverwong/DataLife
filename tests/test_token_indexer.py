@@ -94,58 +94,7 @@ class TestEncodePagesIncremental:
         assert result.page_boundaries[1][1] > result.page_boundaries[0][1]
         assert result.page_boundaries[2][1] > result.page_boundaries[1][1]
 
-    def test_threshold_exceeded_returns_none(self):
-        """超过阈值返回 None。"""
-        # 构建足够大的文档
-        large_text = "测试文本。" * 1000
-        parsed = PDFParseResult(
-            source="test.pdf",
-            page_count=1,
-            chunks=[
-                PageChunk(
-                    page_number=1,
-                    markdown_text=large_text,
-                    metadata={},
-                    toc_items=[],
-                    page_boxes=[],
-                ),
-            ],
-        )
-
-        # 设置一个较小的阈值（小于文档 token 数）
-        threshold = 100
-        result = encode_pages_incremental(parsed, threshold=threshold)
-
-        # 验证返回 None
-        assert result is None
-
-    def test_threshold_not_exceeded_returns_index(self):
-        """未超过阈值返回完整 PageTokenIndex。"""
-        # 构建足够大的文档
-        large_text = "测试文本。" * 1000
-        parsed = PDFParseResult(
-            source="test.pdf",
-            page_count=1,
-            chunks=[
-                PageChunk(
-                    page_number=1,
-                    markdown_text=large_text,
-                    metadata={},
-                    toc_items=[],
-                    page_boxes=[],
-                ),
-            ],
-        )
-
-        # 设置一个较大的阈值（大于文档 token 数）
-        threshold = count_tokens(large_text) + 1000
-        result = encode_pages_incremental(parsed, threshold=threshold)
-
-        # 验证返回完整索引
-        assert result is not None
-        assert isinstance(result, PageTokenIndex)
-
-    def test_no_threshold_always_completes(self):
+    def test_always_completes_for_large_documents(self):
         """不设阈值，大文档也完成编码。"""
         # 构建大文档（约 5000+ tokens）
         large_text = "这是测试内容。" * 500
