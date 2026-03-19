@@ -23,11 +23,11 @@ from core.data.models import (
     MergedChapter,
     ParsedDocument,
 )
-from core.data.token_counter import (
+from .token_counter import (
     count_tokens,
     slice_tokens,
 )
-from core.data.token_indexer import (
+from .token_indexer import (
     PageTokenIndex,
     get_chapter_token_count,
     slice_window_from_index,

@@ -19,15 +19,15 @@ from core.data.models import (
     ChunkList,
     ChunkType,
 )
-from core.data.chunker import (
+from core.data.chunking.chunker import (
     build_chunks,
     _extract_chapter_text,
     _split_by_subheadings,
     _split_by_token_window,
     _split_by_token_window_with_index,
 )
-from core.data.token_counter import count_tokens, slice_tokens
-from core.data.token_indexer import (
+from core.data.chunking.token_counter import count_tokens, slice_tokens
+from core.data.chunking.token_indexer import (
     PageTokenIndex,
     get_chapter_token_count,
 )
@@ -234,7 +234,7 @@ class TestLevel2SamePageMerge:
 
     def test_same_page_level2_boundaries_merged(self):
         """同页的 level=2 子边界应被合并，减少产出的 chunk 数。"""
-        from core.data.chunker import _merge_same_page_boundaries
+        from core.data.chunking.chunker import _merge_same_page_boundaries
 
         sub_boundaries = [
             ChapterBoundary(title="一、基本情况", level=2, start_page=2, end_page=2, source="bookmark"),
@@ -372,7 +372,7 @@ class TestSplitByTokenWindowWithIndex:
 
         每章有唯一标记文本，便于验证不包含其他章节内容。
         """
-        from core.data.token_indexer import encode_pages_incremental
+        from core.data.chunking.token_indexer import encode_pages_incremental
         from core.data.models import PDFParseResult, PageChunk
 
         # 章节 1：第 1 页，唯一标记 "CHAPTER_ONE_MARKER"
@@ -437,8 +437,8 @@ class TestSplitByTokenWindowWithIndex:
         测试场景：对第 2 章（page 2-3）调用 token 窗口切分，
         预期所有 chunk 的 page_range 都在 [2, 3] 范围内。
         """
-        from core.data.token_indexer import get_chapter_token_count
-        from core.data.chunker import _split_by_token_window_with_index
+        from core.data.chunking.token_indexer import get_chapter_token_count
+        from core.data.chunking.chunker import _split_by_token_window_with_index
 
         parsed, token_index = self._create_parsed_and_index()
 
@@ -475,7 +475,7 @@ class TestSplitByTokenWindowWithIndex:
 
         测试场景：第 2 章的 chunks 不应包含第 1 章或第 3 章的唯一标记。
         """
-        from core.data.chunker import _split_by_token_window_with_index
+        from core.data.chunking.chunker import _split_by_token_window_with_index
 
         parsed, token_index = self._create_parsed_and_index()
 
@@ -506,7 +506,7 @@ class TestSplitByTokenWindowWithIndex:
         测试场景：最后一个 chunk 应该恰好在章节结束位置结束，
         不超出章节范围。
         """
-        from core.data.chunker import _split_by_token_window_with_index
+        from core.data.chunking.chunker import _split_by_token_window_with_index
 
         parsed, token_index = self._create_parsed_and_index()
 
@@ -563,7 +563,7 @@ class TestSplitByTokenWindowWithIndex:
 # ── 子标题拆分 token_index 复用测试 ────────────────────────────────────────
 
 import array
-from core.data.token_indexer import PageTokenIndex
+from core.data.chunking.token_indexer import PageTokenIndex
 
 
 class TestSplitBySubheadingsTokenIndex:

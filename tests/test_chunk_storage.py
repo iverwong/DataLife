@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 from core.data.models import Chunk, ChunkList, ChunkType
-from core.data.chunk_storage import save_chunks, load_chunks
+from core.data.chunking.chunk_storage import save_chunks, load_chunks
 
 
 @pytest.fixture

@@ -12,7 +12,7 @@ from __future__ import annotations
 import pymupdf
 import pytest
 
-from core.data.chapter_detector import (
+from core.data.chunking.chapter_detector import (
     BookmarkStrategy,
     FallbackStrategy,
     HeadingStrategy,
