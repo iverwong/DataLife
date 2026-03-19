@@ -293,7 +293,11 @@ def run_step2(
 
     # 导出逐块 markdown
     for i, chunk in enumerate(chunk_list.chunks):
-        chapter_name = chunk.chapter_path[-1] if chunk.chapter_path else "root"
+        # 包含完整章节路径信息
+        if chunk.chapter_path:
+            chapter_name = "_".join(chunk.chapter_path)
+        else:
+            chapter_name = "root"
         safe_name = sanitize_filename(chapter_name)
         chunk_filename = f"chunk_{i:03d}_{safe_name}.md"
 
