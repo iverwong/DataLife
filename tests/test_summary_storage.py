@@ -29,8 +29,8 @@ def _make_mock_summary(title: str, path: list[str], idx: int) -> ChunkSummaryOut
         chapter_title=title,
         chapter_path=path,
         key_points=[f"{title}要点{idx}"],
-        detailed_summary=f"{title}摘要{idx}",
-        context_brief=f"{title}上下文{idx}",
+        detailed_summary=f"{title}的详细摘要内容，编号{idx}，用于测试摘要存储功能",
+        context_brief=f"{title}的上下文提示信息，编号{idx}",
     )
 
 
@@ -43,8 +43,8 @@ def _make_chapter_summary(title: str) -> ChapterSummary:
             chapter_title=title,
             chapter_path=[title],
             key_points=[f"{title}要点"],
-            detailed_summary=f"{title}摘要",
-            context_brief=f"{title}上下文",
+            detailed_summary=f"{title}的详细摘要内容，用于测试章节摘要功能",
+            context_brief=f"{title}的上下文提示信息",
         ),
         chunk_count=1,
     )
@@ -105,9 +105,9 @@ def sample_chunk_summary() -> ChunkSummaryOutput:
         chapter_title="第一节",
         chapter_path=["第一节"],
         key_points=["要点1"],
-        detailed_summary="详细摘要",
+        detailed_summary="这是第一节的详细摘要内容，用于测试",
         key_data=[KeyDataItem(label="营收", value=1e9, unit="元")],
-        context_brief="上下文",
+        context_brief="这是第一节的上下文提示信息",
     )
 
 
@@ -195,9 +195,9 @@ class TestSaveAndLoad:
                 chapter_title="第一节",
                 chapter_path=["第一节", "子节"],
                 key_points=["要点1"],
-                detailed_summary="详细摘要",
+                detailed_summary="这是第一节的详细摘要内容，用于测试章节摘要功能",
                 key_data=[KeyDataItem(label="营收", value=1e9, unit="元")],
-                context_brief="上下文",
+                context_brief="这是第一节的上下文提示信息",
             ),
             chunk_count=2,
         )
@@ -266,8 +266,8 @@ class TestChapterSummaryUpsert:
             chapter_path=["第一节"],
             summary=ChunkSummaryOutput(
                 chapter_title="第一节", chapter_path=["第一节"],
-                key_points=["v1"], detailed_summary="v1",
-                context_brief="v1",
+                key_points=["v1"], detailed_summary="第一节版本1的详细摘要内容",
+                context_brief="第一节版本1的上下文提示",
             ),
             chunk_count=1,
         )
@@ -278,8 +278,8 @@ class TestChapterSummaryUpsert:
             chapter_path=["第一节"],
             summary=ChunkSummaryOutput(
                 chapter_title="第一节", chapter_path=["第一节"],
-                key_points=["v2"], detailed_summary="v2",
-                context_brief="v2",
+                key_points=["v2"], detailed_summary="第一节版本2的详细摘要内容",
+                context_brief="第一节版本2的上下文提示",
             ),
             chunk_count=1,
         )
@@ -335,7 +335,8 @@ class TestTimezoneAwareness:
             chapter_path=["第一节"],
             summary=ChunkSummaryOutput(
                 chapter_title="第一节", chapter_path=["第一节"],
-                key_points=["p"], detailed_summary="s", context_brief="c",
+                key_points=["p"], detailed_summary="第一节的详细摘要内容用于测试",
+                context_brief="第一节的上下文提示信息",
             ),
             chunk_count=1,
         )
@@ -449,12 +450,14 @@ class TestChunkSummaryPersistence:
 
         summary = ChunkSummaryOutput(
             chapter_title="第一节", chapter_path=["第一节"],
-            key_points=["v1"], detailed_summary="v1", context_brief="v1",
+            key_points=["v1"], detailed_summary="第一节版本1的详细摘要内容",
+            context_brief="第一节版本1的上下文",
         )
         await save_chunk_summary(meta_id, summary)
         summary_v2 = ChunkSummaryOutput(
             chapter_title="第一节", chapter_path=["第一节"],
-            key_points=["v2"], detailed_summary="v2", context_brief="v2",
+            key_points=["v2"], detailed_summary="第一节版本2的详细摘要内容",
+            context_brief="第一节版本2的上下文",
         )
         await save_chunk_summary(meta_id, summary_v2)
 
