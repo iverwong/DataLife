@@ -11,11 +11,13 @@ import pytest
 from unittest.mock import AsyncMock, patch
 
 from core.data.summarizing.summary_models import ChapterSummary, ChunkSummaryOutput
+from core.agents.base import AgentRunner
+from core.agents.summarizing import ChapterMergerConfig
 from core.data.summarizing.chapter_merger import (
+    _run_merge_agent,
     build_single_chunk_chapter,
     merge_chapter_summaries,
 )
-from core.data.exceptions import ChapterMergeError
 
 
 # ── Fixtures ────────────────────────────────────────────
@@ -124,3 +126,87 @@ class TestMergeChapterSummaries:
         # 降级摘要应包含各子块内容
         for i in range(3):
             assert f"子块{i}摘要内容" in result.summary.detailed_summary
+
+
+# ── _run_merge_agent HTTP 客户端资源清理 ───────────────────
+class TestMergeAgentResourceCleanup:
+    """验证 _run_merge_agent 的 HTTP 客户端生命周期。
+
+    问题 3 的根源：原实现中 httpx.AsyncClient 未调用 aclose()。
+    重构后 AgentRunner.__aexit__ 保证 aclose() 被调用。
+    """
+
+    @pytest.mark.asyncio
+    async def test_http_client_closed_after_success(
+        self,
+        multi_summaries: list[ChunkSummaryOutput],
+        merged_output: ChunkSummaryOutput,
+    ) -> None:
+        """Given: 正常的多子块合并请求
+        When: _run_merge_agent 成功完成
+        Then: AgentRunner 上下文管理器正确关闭 http_client"""
+        with patch(
+            "core.agents.base.AgentRunner.__aexit__",
+            new_callable=AsyncMock,
+        ) as mock_aexit:
+            # 让 __aexit__ 执行真实逻辑
+            mock_aexit.side_effect = None
+
+            with patch(
+                "core.agents.base.AgentRunner.run",
+                new_callable=AsyncMock,
+                return_value=merged_output,
+            ):
+                with patch(
+                    "core.agents.base.AgentRunner.__aenter__",
+                    new_callable=AsyncMock,
+                    return_value=AgentRunner.__new__(AgentRunner),
+                ):
+                    await _run_merge_agent(
+                        multi_summaries,
+                        "附注",
+                        ["附注"],
+                        model="deepseek-chat",
+                        api_key="test-key",
+                        temperature=0.3,
+                        max_tokens=4096,
+                        retries=3,
+                    )
+
+            # 验证 __aexit__ 被调用（这会触发 aclose）
+            mock_aexit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_http_client_closed_after_failure(
+        self,
+        multi_summaries: list[ChunkSummaryOutput],
+    ) -> None:
+        """Given: AgentRunner.run 抛出异常
+        When: 异常从 async with 块中冒出
+        Then: __aexit__ 仍被调用，http_client.aclose 执行"""
+        mock_client = AsyncMock()
+
+        # 创建一个 AgentRunner 并手动注入 mock_client
+        runner: AgentRunner[ChunkSummaryOutput] = AgentRunner(
+            ChapterMergerConfig(model="deepseek-chat"),
+            "test-key",
+        )
+        runner._http_client = mock_client
+
+        # patch __aenter__ 返回同一个 runner（避免重新创建 httpx.AsyncClient）
+        with patch.object(
+            AgentRunner,
+            "__aenter__",
+            return_value=runner,
+        ):
+            with patch.object(
+                AgentRunner,
+                "run",
+                side_effect=Exception("LLM failure"),
+            ):
+                with pytest.raises(Exception, match="LLM failure"):
+                    async with runner:
+                        await runner.run("test prompt")
+
+        # 验证 __aexit__ 被调用并关闭了 http_client
+        mock_client.aclose.assert_awaited_once()

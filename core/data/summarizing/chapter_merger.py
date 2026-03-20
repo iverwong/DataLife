@@ -13,13 +13,9 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING
 
-import httpx
 import logfire
-from pydantic_ai import Agent
-from pydantic_ai.models.openai import OpenAIChatModel
-from pydantic_ai.providers.deepseek import DeepSeekProvider
-from pydantic_ai.settings import ModelSettings
 
+from core.agents.base import AgentRunner
 from core.data.exceptions import LLMResponseError
 from .summary_models import ChapterSummary, ChunkSummaryOutput, KeyDataItem
 
@@ -109,31 +105,23 @@ async def _run_merge_agent(
         if not api_key:
             raise LLMResponseError("DEEPSEEK_API_KEY not found in environment")
 
-    # 创建 Agent
-    http_client = httpx.AsyncClient(timeout=60)
-    model_instance = OpenAIChatModel(
-        model,
-        provider=DeepSeekProvider(api_key=api_key, http_client=http_client),
-    )
-
-    agent = Agent(
-        model_instance,
-        output_type=ChunkSummaryOutput,
-        retries=retries,
-    )
-
     logfire.debug(
         "Running merge agent for chapter: {chapter_title}, sub_count={count}",
         chapter_title=chapter_title,
         count=len(sub_summaries),
     )
 
-    result = await agent.run(
-        user_prompt,
-        model_settings=ModelSettings(temperature=temperature, max_tokens=max_tokens),
-    )
+    # 延迟导入避免循环依赖
+    from core.agents.summarizing import ChapterMergerConfig  # type: ignore[attr-defined]
 
-    return result.output
+    config = ChapterMergerConfig(
+        model=model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        retries=retries,
+    )
+    async with AgentRunner(config, api_key) as runner:
+        return await runner.run(user_prompt)
 
 
 async def merge_chapter_summaries(
