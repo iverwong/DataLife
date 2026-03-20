@@ -3,17 +3,15 @@
 与 Step 2 的 chunk_meta 表关联，存储摘要输出。
 所有操作通过 get_session() 获取 session 执行。
 """
+
 from __future__ import annotations
 
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
-from .summary_models import (
-    ChapterSummary,
-    ChunkSummaryOutput,
-    DocumentSummary,
-)
+from core.data.exceptions import SummaryStorageError  # type: ignore[attr-defined]
 from core.db import get_session
 from core.db.models import (
     ChapterSummaryRecord,
@@ -21,48 +19,59 @@ from core.db.models import (
     DocumentSummaryRecord,
 )
 
-
-class SummaryStorageError(Exception):
-    """摘要存储异常。"""
-
-    pass
+from .summary_models import (
+    ChapterSummary,
+    ChunkSummaryOutput,
+    DocumentSummary,
+)
 
 
 async def save_chunk_summary(
     chunk_meta_id: int,
     summary: ChunkSummaryOutput,
 ) -> int:
-    """保存单个 Chunk 的摘要结果。
+    """保存单个 Chunk 的摘要结果（upsert 语义）。
 
-    将 ChunkSummaryOutput 转为 ChunkSummaryRecord 并 add 到 session。
-
-    Args:
-        chunk_meta_id: chunk_meta 表中对应的记录 ID。
-        summary: Chunk 摘要输出。
-
-    Returns:
-        插入记录的 ID。
-
-    Raises:
-        SummaryStorageError: 写入失败。
+    按 chunk_meta_id 先查后更新/插入。
+    chunk_meta_id 外键关联 ChunkMetaRecord，可追溯原文和 chunk 信息。
     """
     try:
-        # 注意：chapter_path, key_points, key_data 现在由 TypeDecorator 自动序列化
-        record = ChunkSummaryRecord(
-            chunk_meta_id=chunk_meta_id,
-            chapter_title=summary.chapter_title,
-            chapter_path=summary.chapter_path,
-            key_points=summary.key_points,
-            detailed_summary=summary.detailed_summary,
-            key_data=summary.key_data or None,
-            context_brief=summary.context_brief,
-            created_at=datetime.now().isoformat(),
-        )
-
         async with get_session() as session:
-            session.add(record)
+            result = await session.execute(
+                select(ChunkSummaryRecord)
+                .where(ChunkSummaryRecord.chunk_meta_id == chunk_meta_id)
+            )
+            record = result.scalar_one_or_none()
+
+            now = datetime.now(tz=ZoneInfo("Asia/Shanghai")).isoformat()
+
+            if record is not None:
+                # 更新
+                record.chapter_title = summary.chapter_title
+                record.chapter_path = summary.chapter_path
+                record.key_points = summary.key_points
+                record.detailed_summary = summary.detailed_summary
+                record.key_data = summary.key_data or None
+                record.context_brief = summary.context_brief
+                record.created_at = now
+            else:
+                # 插入
+                record = ChunkSummaryRecord(
+                    chunk_meta_id=chunk_meta_id,
+                    chapter_title=summary.chapter_title,
+                    chapter_path=summary.chapter_path,
+                    key_points=summary.key_points,
+                    detailed_summary=summary.detailed_summary,
+                    key_data=summary.key_data or None,
+                    context_brief=summary.context_brief,
+                    created_at=now,
+                )
+                session.add(record)
+
             await session.flush()
             return record.id
+    except SummaryStorageError:
+        raise
     except Exception as e:
         raise SummaryStorageError(f"保存 Chunk 摘要失败: {e}") from e
 
@@ -72,37 +81,46 @@ async def save_chapter_summary(
     stock_code: str,
     report_date: str,
 ) -> int:
-    """保存章节级摘要结果。
+    """保存章节级摘要结果（upsert 语义）。
 
-    将 ChapterSummary 转为 ChapterSummaryRecord 并 add 到 session。
-
-    Args:
-        chapter: 章节摘要。
-        stock_code: 股票代码。
-        report_date: 报告日期。
-
-    Returns:
-        插入记录的 ID。
-
-    Raises:
-        SummaryStorageError: 写入失败。
+    按 (stock_code, report_date, chapter_title) 先查后更新/插入。
     """
     try:
-        # 注意：chapter_path 和 summary 现在由 TypeDecorator 自动序列化
-        record = ChapterSummaryRecord(
-            stock_code=stock_code,
-            report_date=report_date,
-            chapter_title=chapter.chapter_title,
-            chapter_path=chapter.chapter_path,
-            summary_json=chapter.summary,
-            chunk_count=chapter.chunk_count,
-            created_at=datetime.now().isoformat(),
-        )
-
         async with get_session() as session:
-            session.add(record)
+            # 查询已存在记录
+            result = await session.execute(
+                select(ChapterSummaryRecord)
+                .where(ChapterSummaryRecord.stock_code == stock_code)
+                .where(ChapterSummaryRecord.report_date == report_date)
+                .where(ChapterSummaryRecord.chapter_title == chapter.chapter_title)
+            )
+            record = result.scalar_one_or_none()
+
+            now = datetime.now(tz=ZoneInfo("Asia/Shanghai")).isoformat()
+
+            if record is not None:
+                # 更新
+                record.chapter_path = chapter.chapter_path
+                record.summary_json = chapter.summary
+                record.chunk_count = chapter.chunk_count
+                record.created_at = now
+            else:
+                # 插入
+                record = ChapterSummaryRecord(
+                    stock_code=stock_code,
+                    report_date=report_date,
+                    chapter_title=chapter.chapter_title,
+                    chapter_path=chapter.chapter_path,
+                    summary_json=chapter.summary,
+                    chunk_count=chapter.chunk_count,
+                    created_at=now,
+                )
+                session.add(record)
+
             await session.flush()
             return record.id
+    except SummaryStorageError:
+        raise
     except Exception as e:
         raise SummaryStorageError(f"保存章节摘要失败: {e}") from e
 
@@ -155,7 +173,7 @@ async def save_document_summary(
                 record.total_chunks_processed = doc_summary.total_chunks_processed
                 record.all_key_points = doc_summary.all_key_points
                 record.all_key_data = doc_summary.all_key_data or None
-                record.created_at = datetime.now().isoformat()
+                record.created_at = datetime.now(tz=ZoneInfo("Asia/Shanghai")).isoformat()
             else:
                 # 插入
                 record = DocumentSummaryRecord(
@@ -165,7 +183,7 @@ async def save_document_summary(
                     total_chunks_processed=doc_summary.total_chunks_processed,
                     all_key_points=doc_summary.all_key_points,
                     all_key_data=doc_summary.all_key_data or None,
-                    created_at=datetime.now().isoformat(),
+                    created_at=datetime.now(tz=ZoneInfo("Asia/Shanghai")).isoformat(),
                 )
                 session.add(record)
 
