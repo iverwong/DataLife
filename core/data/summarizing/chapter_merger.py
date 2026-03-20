@@ -15,7 +15,6 @@ from typing import TYPE_CHECKING
 
 import logfire
 
-from core.agents.base import AgentRunner
 from core.data.exceptions import LLMResponseError
 from .summary_models import ChapterSummary, ChunkSummaryOutput, KeyDataItem
 
@@ -112,6 +111,7 @@ async def _run_merge_agent(
     )
 
     # 延迟导入避免循环依赖
+    from core.agents.base import AgentRunner  # type: ignore[attr-defined]
     from core.agents.summarizing import ChapterMergerConfig  # type: ignore[attr-defined]
 
     config = ChapterMergerConfig(

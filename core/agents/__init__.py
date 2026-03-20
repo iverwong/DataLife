@@ -1,16 +1,8 @@
-"""Agent 抽象层。
-
-统一管理 PydanticAI Agent 的创建、配置和 HTTP 客户端生命周期。
-"""
-
-from __future__ import annotations
-
-from core.agents.base import AgentConfig, AgentRunner
-from core.agents.summarizing import ChunkSummarizerConfig, ChapterMergerConfig
+"""Agent 注册中心：集中导出所有 agent 实例。"""
+from core.agents.chunk_summarizer_agent import chunk_summarizer_agent
+from core.agents.chapter_merger_agent import chapter_merger_agent
 
 __all__ = [
-    "AgentConfig",
-    "AgentRunner",
-    "ChunkSummarizerConfig",
-    "ChapterMergerConfig",
+    "chunk_summarizer_agent",
+    "chapter_merger_agent",
 ]

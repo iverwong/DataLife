@@ -8,16 +8,19 @@
 """
 from __future__ import annotations
 
-import pytest
+import os
 from unittest.mock import AsyncMock, patch
+
+import pytest
+from pydantic_ai.models.test import TestModel
 
 from core.data.models import Chunk, ChunkType
 from core.data.summarizing.summary_models import ChunkSummaryOutput
 from core.data.summarizing.chunk_summarizer import (
-    SummarizeContext,
     build_summarize_context,
     summarize_chunk,
 )
+from core.data.summarizing.summary_models import SummarizeContext
 from core.data.exceptions import LLMResponseError
 
 
@@ -116,15 +119,13 @@ class TestSummarizeChunk:
             contained_chapters=None,
             chunk_index=0,
         )
-        # mock AgentRunner class to avoid __aenter__ calling real DeepSeekProvider
-        mock_runner = AsyncMock()
-        mock_runner.run.return_value = mock_summary_output  # type: ignore[reportAny]
-        mock_runner.__aenter__.return_value = mock_runner  # type: ignore[reportAny]
-        with patch(
-            "core.data.summarizing.chunk_summarizer.AgentRunner",
-            return_value=mock_runner,
-        ):
-            result = await summarize_chunk(sample_chunk, ctx)
+        # 使用 agent.override(model=TestModel) 模拟 agent 返回预设输出
+        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "test-key"}):
+            from core.agents.chunk_summarizer_agent import chunk_summarizer_agent
+
+            test_model = TestModel(custom_output_args=mock_summary_output.model_dump())
+            with chunk_summarizer_agent.override(model=test_model):
+                result = await summarize_chunk(sample_chunk, ctx)
         assert isinstance(result, ChunkSummaryOutput)
         assert result.chapter_title == "3.1 经营概况"
         assert len(result.key_points) >= 1
@@ -140,13 +141,13 @@ class TestSummarizeChunk:
             contained_chapters=None,
             chunk_index=0,
         )
-        with patch(
-            "core.agents.AgentRunner.run",
-            new_callable=AsyncMock,
-            side_effect=LLMResponseError("Empty response from LLM"),
-        ):
-            with pytest.raises(LLMResponseError):
-                await summarize_chunk(sample_chunk, ctx)
+        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "test-key"}):
+            from core.agents.chunk_summarizer_agent import chunk_summarizer_agent
+
+            # 使用 patch 拦截 agent.run 方法来模拟错误
+            with patch.object(chunk_summarizer_agent, 'run', side_effect=LLMResponseError("Empty response from LLM")):
+                with pytest.raises(LLMResponseError):
+                    _ = await summarize_chunk(sample_chunk, ctx)
 
     @pytest.mark.asyncio
     async def test_context_brief_injected_in_prompt(
@@ -164,19 +165,17 @@ class TestSummarizeChunk:
         )
         captured_prompts: list[str] = []
 
-        async def mock_run(prompt: str, **_kwargs: object) -> ChunkSummaryOutput:
-            # 捕获传入的 user prompt 以验证 context_brief 注入
-            captured_prompts.append(prompt)
-            return mock_summary_output
+        async def mock_run(user_prompt: str, **kwargs: object) -> AsyncMock:
+            captured_prompts.append(user_prompt)
+            # Return a mock result with the expected output
+            mock_result = AsyncMock()
+            mock_result.output = mock_summary_output
+            return mock_result
 
-        # mock AgentRunner class to avoid __aenter__ calling real DeepSeekProvider
-        mock_runner = AsyncMock()
-        mock_runner.run.side_effect = mock_run  # type: ignore[reportAny]
-        mock_runner.__aenter__.return_value = mock_runner  # type: ignore[reportAny]
-        with patch(
-            "core.data.summarizing.chunk_summarizer.AgentRunner",
-            return_value=mock_runner,
-        ):
-            await summarize_chunk(sample_chunk_with_prior, ctx)
+        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "test-key"}):
+            from core.agents.chunk_summarizer_agent import chunk_summarizer_agent
+
+            with patch.object(chunk_summarizer_agent, 'run', side_effect=mock_run):
+                _ = await summarize_chunk(sample_chunk_with_prior, ctx)
         # 验证 context_brief 出现在 prompt 中
-        # 具体验证方式取决于实现中 prompt 的构建方式
+        assert any(prev_brief in p for p in captured_prompts), "context_brief not found in captured prompts"
