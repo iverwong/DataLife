@@ -158,7 +158,7 @@ async def summarize_document(
             # --- 持久化阶段：独立错误处理，失败不中断管道 ---
             if persist and chunk_meta_ids is not None:
                 try:
-                    await save_chunk_summary(
+                    _ = await save_chunk_summary(
                         chunk_meta_ids[i],
                         summary,
                     )
@@ -248,14 +248,14 @@ async def summarize_document(
     if persist:
         # 保存章节摘要
         for chapter_summary in chapter_summaries:
-            await save_chapter_summary(
+            _ = await save_chapter_summary(
                 chapter_summary,
                 stock_code=stock_code,
                 report_date=report_date,
             )
 
         # 保存文档摘要
-        await save_document_summary(doc_summary)
+        _ = await save_document_summary(doc_summary)
 
         logfire.debug(
             "Document summary persisted: stock={stock}, date={date}",
