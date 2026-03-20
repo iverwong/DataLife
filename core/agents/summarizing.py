@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, override
+from typing import override
 
 from pydantic_ai import Agent, ModelRetry, RunContext
 
@@ -51,7 +51,7 @@ context_brief 是前一 Chunk 的精简摘要，用于：
 
 
 @dataclass(frozen=True)
-class ChunkSummarizerConfig(AgentConfig[ChunkSummaryOutput]):
+class ChunkSummarizerConfig(AgentConfig[SummarizeContext, ChunkSummaryOutput]):
     """逐 Chunk 摘要 Agent 配置。"""
 
     @override
@@ -67,7 +67,9 @@ class ChunkSummarizerConfig(AgentConfig[ChunkSummaryOutput]):
         return SummarizeContext
 
     @override
-    def configure_agent(self, agent: Agent[Any, ChunkSummaryOutput]) -> None:  # pyright: ignore[reportExplicitAny]
+    def configure_agent(
+        self, agent: Agent[SummarizeContext, ChunkSummaryOutput]
+    ) -> None:
         """注册 output_validator。"""
 
         @agent.output_validator
@@ -80,7 +82,7 @@ class ChunkSummarizerConfig(AgentConfig[ChunkSummaryOutput]):
 
 
 @dataclass(frozen=True)
-class ChapterMergerConfig(AgentConfig[ChunkSummaryOutput]):
+class ChapterMergerConfig(AgentConfig[None, ChunkSummaryOutput]):
     """章节合并 Agent 配置。"""
 
     @override

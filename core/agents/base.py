@@ -15,11 +15,12 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.deepseek import DeepSeekProvider
 from pydantic_ai.settings import ModelSettings
 
-T = TypeVar("T")
+T_IN = TypeVar("T_IN")
+T_OUT = TypeVar("T_OUT")
 
 
 @dataclass(frozen=True)
-class AgentConfig(ABC, Generic[T]):
+class AgentConfig(ABC, Generic[T_IN, T_OUT]):
     """Agent 配置抽象基类。
 
     子类实现具体的 instructions、output_type、
@@ -33,7 +34,7 @@ class AgentConfig(ABC, Generic[T]):
     timeout: int = 60
 
     @abstractmethod
-    def get_output_type(self) -> type[T]:
+    def get_output_type(self) -> type[T_OUT]:
         """返回 Agent 的 output_type。"""
         ...
 
@@ -42,13 +43,13 @@ class AgentConfig(ABC, Generic[T]):
         """返回 Agent instructions 字符串。"""
         ...
 
-    def get_deps_type(self) -> type | None:
+    def get_deps_type(self) -> type[T_IN] | None:
         """返回 Agent 的 deps_type，默认为 None。"""
         return None
 
-    def configure_agent(self, agent: Agent[Any, T]) -> None:  # pyright: ignore[reportExplicitAny, reportUnusedParameter]
+    def configure_agent(self, agent: Agent[T_IN, T_OUT]) -> None:  # pyright: ignore[reportUnusedParameter]
         """子类可重写以注册 output_validator 等装饰器。"""
-        pass
+        ...
 
     def get_model_settings(self) -> ModelSettings:
         """构建 ModelSettings。"""
@@ -58,7 +59,7 @@ class AgentConfig(ABC, Generic[T]):
         )
 
 
-class AgentRunner(Generic[T]):
+class AgentRunner(Generic[T_IN, T_OUT]):
     """Agent 运行器，管理 HTTP 客户端生命周期。
 
     用法：
@@ -66,18 +67,18 @@ class AgentRunner(Generic[T]):
             result = await runner.run(prompt, deps=deps)
     """
 
-    _config: AgentConfig[T]
+    _config: AgentConfig[T_IN, T_OUT]
     _api_key: str
     _http_client: httpx.AsyncClient | None
-    _agent: Agent[Any, T] | None  # pyright: ignore[reportExplicitAny]
+    _agent: Agent[T_IN, T_OUT] | None
 
-    def __init__(self, config: AgentConfig[T], api_key: str) -> None:
+    def __init__(self, config: AgentConfig[T_IN, T_OUT], api_key: str) -> None:
         self._config = config
         self._api_key = api_key
         self._http_client = None
         self._agent = None
 
-    async def __aenter__(self) -> "AgentRunner[T]":
+    async def __aenter__(self) -> "AgentRunner[T_IN, T_OUT]":
         self._http_client = httpx.AsyncClient(timeout=self._config.timeout)
         model_instance = OpenAIChatModel(
             self._config.model,
@@ -116,12 +117,10 @@ class AgentRunner(Generic[T]):
         self,
         prompt: str,
         *,
-        deps: Any = None,  # pyright: ignore[reportAny, reportExplicitAny]
+        deps: T_IN = None,
         model_settings: ModelSettings | None = None,
-    ) -> T:
+    ) -> T_OUT:
         """运行 Agent 并返回结构化输出。"""
         assert self._agent is not None, "AgentRunner 未进入上下文"
-        result = await self._agent.run(
-            prompt, deps=deps, model_settings=model_settings
-        )
+        result = await self._agent.run(prompt, deps=deps, model_settings=model_settings)
         return result.output
