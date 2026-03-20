@@ -41,11 +41,8 @@ async def summarize_document(
     *,
     stock_code: str,
     report_date: str,
-    model: str = "deepseek-chat",
-    api_key: str | None = None,
     temperature: float = 0.3,
-    max_tokens: int = 4096,
-    retries: int = 3,
+    max_tokens: int = 8192,
     persist: bool = True,
     chunk_meta_ids: list[int] | None = None,  # type: ignore[assignment]
 ) -> "DocumentSummary":
@@ -69,11 +66,8 @@ async def summarize_document(
         chunk_list: Step 2 产出的 ChunkList
         stock_code: 股票代码，用于存储关联
         report_date: 报告日期
-        model: DeepSeek 模型名称
-        api_key: API Key
         temperature: 生成温度
-        max_tokens: 最大输出 token
-        retries: 重试次数
+        max_tokens: 最大输出 token（默认 8192，对应 DeepSeek 输出上限）
         persist: 是否持久化到 SQLite
         chunk_meta_ids: 每个 Chunk 对应的 chunk_meta_id 列表，按索引对应。
             当 persist=True 时，用于 per-chunk 持久化调用 save_chunk_summary。
@@ -135,11 +129,8 @@ async def summarize_document(
             summary = await summarize_chunk(
                 chunk,
                 context,
-                model=model,
-                api_key=api_key,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                retries=retries,
             )
             chunk_summaries.append(summary)
 
@@ -208,11 +199,8 @@ async def summarize_document(
                 group,
                 chapter_title=group[0].chapter_title,
                 chapter_path=group[0].chapter_path,
-                model=model,
-                api_key=api_key,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                retries=retries,
             )
 
         chapter_summaries.append(chapter_summary)
