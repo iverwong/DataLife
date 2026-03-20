@@ -28,8 +28,8 @@ def single_summary() -> ChunkSummaryOutput:
         chapter_title="第一节",
         chapter_path=["第一节"],
         key_points=["要点A"],
-        detailed_summary="第一节详细摘要",
-        context_brief="第一节上下文",
+        detailed_summary="第一节的详细摘要内容",
+        context_brief="第一节的上下文提示信息",
     )
 
 
@@ -41,8 +41,8 @@ def multi_summaries() -> list[ChunkSummaryOutput]:
             chapter_title="附注",
             chapter_path=["第十一节 财务报告", "附注"],
             key_points=[f"子块{i}要点"],
-            detailed_summary=f"子块{i}摘要内容",
-            context_brief=f"子块{i}上下文",
+            detailed_summary=f"子块{i}的详细摘要内容，用于测试章节合并",
+            context_brief=f"子块{i}的上下文信息，用于测试合并流程",
         )
         for i in range(3)
     ]
@@ -55,8 +55,8 @@ def merged_output() -> ChunkSummaryOutput:
         chapter_title="附注",
         chapter_path=["第十一节 财务报告", "附注"],
         key_points=["合并后要点1", "合并后要点2"],
-        detailed_summary="附注章节的统一摘要...",
-        context_brief="附注章节概述了财务报告详细数据。",
+        detailed_summary="附注章节的统一摘要内容，涵盖所有子块的关键数据。",
+        context_brief="附注章节概述了财务报告详细数据内容。",
     )
 
 
@@ -125,7 +125,7 @@ class TestMergeChapterSummaries:
         assert result.chunk_count == 3
         # 降级摘要应包含各子块内容
         for i in range(3):
-            assert f"子块{i}摘要内容" in result.summary.detailed_summary
+            assert f"子块{i}的详细摘要内容" in result.summary.detailed_summary
 
 
 # ── _run_merge_agent HTTP 客户端资源清理 ───────────────────

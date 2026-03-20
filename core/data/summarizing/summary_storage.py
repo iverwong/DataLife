@@ -225,11 +225,30 @@ async def load_document_summary(
             if record is None:
                 return None
 
+            # 查询关联的章节摘要记录
+            chapter_result = await session.execute(
+                select(ChapterSummaryRecord)
+                .where(ChapterSummaryRecord.stock_code == stock_code)
+                .where(ChapterSummaryRecord.report_date == report_date)
+            )
+            chapter_records = chapter_result.scalars().all()
+
+            # 将章节记录转换为 ChapterSummary 对象
+            chapter_summaries = [
+                ChapterSummary(
+                    chapter_title=cr.summary_json.chapter_title,
+                    chapter_path=cr.summary_json.chapter_path,
+                    summary=cr.summary_json,
+                    chunk_count=cr.chunk_count,
+                )
+                for cr in chapter_records
+            ]
+
             # 注意：all_key_points 和 all_key_data 现在由 TypeDecorator 自动反序列化
             # 直接使用 record 字段即可获得正确的 Python 对象
             return DocumentSummary(
                 source=f"{record.stock_code}_{record.report_date}",
-                chapter_summaries=[],  # 加载时不返回 chapter_summaries
+                chapter_summaries=chapter_summaries,
                 all_key_points=record.all_key_points or [],
                 all_key_data=record.all_key_data or [],
                 total_chunks_processed=record.total_chunks_processed,

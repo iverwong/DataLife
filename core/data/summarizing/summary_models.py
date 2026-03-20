@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 @dataclass(frozen=True)
@@ -41,6 +41,12 @@ class PeriodInfo(BaseModel):
     end_date: str | None = None
     description: str = ""
 
+    @model_validator(mode="after")
+    def _at_least_one_field(self) -> PeriodInfo:
+        if not self.start_date and not self.description:
+            raise ValueError("start_date 和 description 至少需填写一个")
+        return self
+
 
 class KeyDataItem(BaseModel):
     """结构化关键数据条目。
@@ -52,7 +58,7 @@ class KeyDataItem(BaseModel):
     - remark：补充说明（如 "扣非后"、"经审计"）
     """
 
-    label: str
+    label: str = Field(min_length=1)
     value: float | None = None
     unit: str = ""
     period: PeriodInfo | None = None
@@ -66,17 +72,21 @@ class ChunkSummaryOutput(BaseModel):
     PydanticAI Agent 的 output_type 即为此模型。
     """
 
-    chapter_title: str = Field(description="章节标题")
-    chapter_path: list[str] = Field(
-        description="章节路径，如 ['第三节 管理层讨论', '3.2 主营业务']"
+    chapter_title: str = Field(min_length=1, description="章节标题")
+    chapter_path: list[str] = Field(min_length=1, description="章节路径")
+    key_points: list[str] = Field(
+        min_length=1, max_length=7,
+        description="核心要点，3-5 条关键信息提炼",
     )
-    key_points: list[str] = Field(description="核心要点，3-5 条关键信息提炼")
-    detailed_summary: str = Field(description="详细摘要，该章节/块的内容概述")
+    detailed_summary: str = Field(
+        min_length=10, description="详细摘要，该章节/块的内容概述",
+    )
     key_data: list[KeyDataItem] = Field(
-        default_factory=list, description="结构化关键数据抽取"
+        default_factory=list, description="结构化关键数据抽取",
     )
     context_brief: str = Field(
-        description="精简上下文提示（3~5 句话），供下一个 LLM 使用"
+        min_length=5,
+        description="精简上下文提示，3~5 句话，控制在 300 字以内，供下一个 LLM 使用",
     )
 
 
@@ -87,10 +97,10 @@ class ChapterSummary(BaseModel):
     用于最终文档拼接。
     """
 
-    chapter_title: str
-    chapter_path: list[str]
+    chapter_title: str = Field(min_length=1)
+    chapter_path: list[str] = Field(min_length=1)
     summary: ChunkSummaryOutput
-    chunk_count: int = Field(description="该章节包含的 Chunk 数量，1 表示单 Chunk 直出")
+    chunk_count: int = Field(ge=1, description="该章节包含的 Chunk 数量")
 
 
 class DocumentSummary(BaseModel):
@@ -99,15 +109,11 @@ class DocumentSummary(BaseModel):
     包含分章节摘要、全文核心要点汇总、关键数据汇总。
     """
 
-    source: str = Field(description="文档来源标识，如股票代码+报告日期")
+    source: str = Field(min_length=1, description="文档来源标识")
     chapter_summaries: list[ChapterSummary] = Field(
-        description="按原文顺序排列的各章节摘要"
+        description="按原文顺序排列的各章节摘要（由 load_document_summary 从 chapter_summary 表重建）",
     )
-    all_key_points: list[str] = Field(
-        description="全文核心要点（各章节 key_points 汇聚）"
-    )
-    all_key_data: list[KeyDataItem] = Field(
-        description="全文关键数据汇总（各章节 key_data 合并）"
-    )
-    total_chunks_processed: int
-    total_chapters: int
+    all_key_points: list[str] = Field(description="全文核心要点汇聚")
+    all_key_data: list[KeyDataItem] = Field(description="全文关键数据汇总")
+    total_chunks_processed: int = Field(ge=1)
+    total_chapters: int = Field(ge=1)
