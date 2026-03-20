@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
@@ -116,7 +117,7 @@ async def save_document_summary(
                 record.total_chunks_processed = doc_summary.total_chunks_processed
                 record.all_key_points = doc_summary.all_key_points
                 record.all_key_data = doc_summary.all_key_data or None
-                record.created_at = datetime.now().isoformat()
+                record.created_at = datetime.now(tz=ZoneInfo("Asia/Shanghai")).isoformat()
             else:
                 # 插入
                 record = DocumentSummaryRecord(
@@ -126,7 +127,7 @@ async def save_document_summary(
                     total_chunks_processed=doc_summary.total_chunks_processed,
                     all_key_points=doc_summary.all_key_points,
                     all_key_data=doc_summary.all_key_data or None,
-                    created_at=datetime.now().isoformat(),
+                    created_at=datetime.now(tz=ZoneInfo("Asia/Shanghai")).isoformat(),
                 )
                 session.add(record)
 
