@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING
 
 import logfire
 
+from core.data.exceptions import LLMResponseError, SummarizationError
+
 from .chapter_merger import build_single_chunk_chapter, merge_chapter_summaries
 from .chunk_summarizer import build_summarize_context, summarize_chunk
 from .summary_models import (
@@ -92,6 +94,9 @@ async def summarize_document(
     # 1. 逐 Chunk 摘要
     chunk_summaries: list[ChunkSummaryOutput] = []
 
+    # 记录失败 chunk：（index, error_message）
+    failed_chunks: list[tuple[int, str]] = []
+
     # 维护每个章节最后一个子块的 context_brief
     # Problem 1 fix: 使用 tuple[str, ...] 作为 key，与 chapter_path 类型一致
     last_context_brief_by_chapter: dict[tuple[str, ...], str] = {}
@@ -101,7 +106,7 @@ async def summarize_document(
     # Problem 1 fix: 使用 tuple[str, ...] 而非 str，避免 tuple vs str 比较永远不相等
     last_chapter_key: tuple[str, ...] | None = None
 
-    for chunk in chunk_list.chunks:
+    for i, chunk in enumerate(chunk_list.chunks):
         # 确定章节 key
         chapter_key = tuple(chunk.chapter_path)
 
@@ -116,33 +121,49 @@ async def summarize_document(
             # 新章节：使用上一个章节最后子块的 context_brief
             previous_context_brief = last_chapter_brief
 
+        # Fallback: 如果 context_brief 仍为 None（失败 chunk 后章节 key 已更新但未存储），
+        # 使用上一个成功的 context_brief
+        if previous_context_brief is None:
+            previous_context_brief = last_chapter_brief
+
         # 构建上下文
         context = build_summarize_context(chunk, previous_context_brief)
 
         # 调用摘要
-        summary = await summarize_chunk(
-            chunk,
-            context,
-            model=model,
-            api_key=api_key,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            retries=retries,
-        )
+        try:
+            summary = await summarize_chunk(
+                chunk,
+                context,
+                model=model,
+                api_key=api_key,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                retries=retries,
+            )
+            chunk_summaries.append(summary)
 
-        chunk_summaries.append(summary)
+            # 更新 context_brief 追踪
+            # Problem 1 fix: 直接使用 tuple 作为 key，不再转为 str
+            last_context_brief_by_chapter[chapter_key] = summary.context_brief
+            last_chapter_brief = summary.context_brief
+            last_chapter_key = chapter_key
 
-        # 更新 context_brief 追踪
-        # Problem 1 fix: 直接使用 tuple 作为 key，不再转为 str
-        last_context_brief_by_chapter[chapter_key] = summary.context_brief
-        last_chapter_brief = summary.context_brief
-        last_chapter_key = chapter_key
-
-        logfire.debug(
-            "Chunk summarized: chapter={chapter}, index={idx}",
-            chapter=chunk.chapter_path[-1],
-            idx=chunk.chunk_index,
-        )
+            logfire.debug(
+                "Chunk summarized: chapter={chapter}, index={idx}",
+                chapter=chunk.chapter_path[-1],
+                idx=chunk.chunk_index,
+            )
+        except (LLMResponseError, SummarizationError) as e:
+            # 记录失败，继续处理下一个 Chunk
+            failed_chunks.append((i, str(e)))
+            logfire.warning(
+                "Chunk {idx} summarization failed, skipping: {error}",
+                idx=i, error=str(e),
+            )
+            # 不更新 context_brief 追踪 — 保持上一个成功的值
+            # last_chapter_key 仍需更新以保持章节切换检测正确
+            last_chapter_key = chapter_key
+            continue
 
     # 2. 按章节分组
     # Problem 1 fix: 使用 tuple[str, ...] 作为 key
@@ -226,6 +247,14 @@ async def summarize_document(
             "Document summary persisted: stock={stock}, date={date}",
             stock=stock_code,
             date=report_date,
+        )
+
+    # Problem 2 fix: 报告失败的 chunk
+    if failed_chunks:
+        logfire.warning(
+            "Document summarization completed with {count} failed chunks: {details}",
+            count=len(failed_chunks),
+            details=failed_chunks,
         )
 
     return doc_summary
