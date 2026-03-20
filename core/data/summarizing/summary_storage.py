@@ -14,6 +14,7 @@ from sqlalchemy import select
 from core.data.exceptions import SummaryStorageError  # type: ignore[attr-defined]
 from core.db import get_session
 from core.db.models import (
+    ChapterSummaryRecord,
     DocumentSummaryRecord,
 )
 
@@ -54,19 +55,45 @@ async def save_chapter_summary(
     """保存章节级摘要结果（upsert 语义）。
 
     按 (stock_code, report_date, chapter_title) 先查后更新/插入。
-
-    Args:
-        chapter: 章节摘要。
-        stock_code: 股票代码。
-        report_date: 报告日期。
-
-    Returns:
-        插入/更新记录的 ID。
-
-    Raises:
-        SummaryStorageError: 写入失败。
     """
-    raise NotImplementedError("Contract declaration only")
+    try:
+        async with get_session() as session:
+            # 查询已存在记录
+            result = await session.execute(
+                select(ChapterSummaryRecord)
+                .where(ChapterSummaryRecord.stock_code == stock_code)
+                .where(ChapterSummaryRecord.report_date == report_date)
+                .where(ChapterSummaryRecord.chapter_title == chapter.chapter_title)
+            )
+            record = result.scalar_one_or_none()
+
+            now = datetime.now(tz=ZoneInfo("Asia/Shanghai")).isoformat()
+
+            if record is not None:
+                # 更新
+                record.chapter_path = chapter.chapter_path
+                record.summary_json = chapter.summary
+                record.chunk_count = chapter.chunk_count
+                record.created_at = now
+            else:
+                # 插入
+                record = ChapterSummaryRecord(
+                    stock_code=stock_code,
+                    report_date=report_date,
+                    chapter_title=chapter.chapter_title,
+                    chapter_path=chapter.chapter_path,
+                    summary_json=chapter.summary,
+                    chunk_count=chapter.chunk_count,
+                    created_at=now,
+                )
+                session.add(record)
+
+            await session.flush()
+            return record.id
+    except SummaryStorageError:
+        raise
+    except Exception as e:
+        raise SummaryStorageError(f"保存章节摘要失败: {e}") from e
 
 
 async def save_document_summary(
