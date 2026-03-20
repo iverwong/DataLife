@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 
 import logfire
 
-from core.data.exceptions import LLMResponseError, SummarizationError
+from core.data.exceptions import LLMResponseError, SummarizationError, SummaryStorageError
 
 from .chapter_merger import build_single_chunk_chapter, merge_chapter_summaries
 from .chunk_summarizer import build_summarize_context, summarize_chunk
@@ -28,6 +28,7 @@ from .summary_models import (
 )
 from .summary_storage import (
     save_chapter_summary,
+    save_chunk_summary,
     save_document_summary,
 )
 
@@ -153,6 +154,19 @@ async def summarize_document(
                 chapter=chunk.chapter_path[-1],
                 idx=chunk.chunk_index,
             )
+
+            # --- 持久化阶段：独立错误处理，失败不中断管道 ---
+            if persist and chunk_meta_ids is not None:
+                try:
+                    await save_chunk_summary(
+                        chunk_meta_ids[i],
+                        summary,
+                    )
+                except SummaryStorageError as e:
+                    logfire.warning(
+                        "Chunk {idx} persistence failed, continuing: {error}",
+                        idx=i, error=str(e),
+                    )
         except (LLMResponseError, SummarizationError) as e:
             # 记录失败，继续处理下一个 Chunk
             failed_chunks.append((i, str(e)))

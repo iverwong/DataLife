@@ -15,6 +15,7 @@ from core.data.exceptions import SummaryStorageError  # type: ignore[attr-define
 from core.db import get_session
 from core.db.models import (
     ChapterSummaryRecord,
+    ChunkSummaryRecord,
     DocumentSummaryRecord,
 )
 
@@ -33,18 +34,46 @@ async def save_chunk_summary(
 
     按 chunk_meta_id 先查后更新/插入。
     chunk_meta_id 外键关联 ChunkMetaRecord，可追溯原文和 chunk 信息。
-
-    Args:
-        chunk_meta_id: chunk_meta 表中对应的记录 ID。
-        summary: Chunk 摘要输出。
-
-    Returns:
-        插入/更新记录的 ID。
-
-    Raises:
-        SummaryStorageError: 写入失败。
     """
-    raise NotImplementedError("Contract declaration only")
+    try:
+        async with get_session() as session:
+            result = await session.execute(
+                select(ChunkSummaryRecord)
+                .where(ChunkSummaryRecord.chunk_meta_id == chunk_meta_id)
+            )
+            record = result.scalar_one_or_none()
+
+            now = datetime.now(tz=ZoneInfo("Asia/Shanghai")).isoformat()
+
+            if record is not None:
+                # 更新
+                record.chapter_title = summary.chapter_title
+                record.chapter_path = summary.chapter_path
+                record.key_points = summary.key_points
+                record.detailed_summary = summary.detailed_summary
+                record.key_data = summary.key_data or None
+                record.context_brief = summary.context_brief
+                record.created_at = now
+            else:
+                # 插入
+                record = ChunkSummaryRecord(
+                    chunk_meta_id=chunk_meta_id,
+                    chapter_title=summary.chapter_title,
+                    chapter_path=summary.chapter_path,
+                    key_points=summary.key_points,
+                    detailed_summary=summary.detailed_summary,
+                    key_data=summary.key_data or None,
+                    context_brief=summary.context_brief,
+                    created_at=now,
+                )
+                session.add(record)
+
+            await session.flush()
+            return record.id
+    except SummaryStorageError:
+        raise
+    except Exception as e:
+        raise SummaryStorageError(f"保存 Chunk 摘要失败: {e}") from e
 
 
 async def save_chapter_summary(
