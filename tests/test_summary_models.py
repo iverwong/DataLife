@@ -37,6 +37,11 @@ class TestPeriodInfo:
         assert p.start_date == "2024-06-15"
         assert p.end_date is None
 
+    def test_empty_raises(self) -> None:
+        """全空 PeriodInfo 应抛出 ValidationError。"""
+        with pytest.raises(ValidationError):
+            PeriodInfo()  # 全空，start_date 和 description 都没有
+
 
 # ── KeyDataItem ─────────────────────────────────────────
 class TestKeyDataItem:
@@ -86,17 +91,33 @@ class TestChunkSummaryOutput:
         assert len(output.key_points) == 2
         assert len(output.key_data) == 1
 
+    def test_empty_label_raises(self) -> None:
+        """空 label 应抛出 ValidationError。"""
+        with pytest.raises(ValidationError):
+            KeyDataItem(label="", value=100)
+
     def test_empty_key_data_allowed(self) -> None:
         """key_data 可以为空列表（某些章节无结构化数据）。"""
         output = ChunkSummaryOutput(
             chapter_title="致股东书",
             chapter_path=["致股东书"],
             key_points=["展望未来发展"],
-            detailed_summary="董事长致辞...",
+            detailed_summary="董事长致辞内容概要...",
             key_data=[],
             context_brief="致股东书主要介绍了公司发展愿景。",
         )
         assert output.key_data == []
+
+    def test_empty_key_points_raises(self) -> None:
+        """空 key_points 应抛出 ValidationError。"""
+        with pytest.raises(ValidationError):
+            ChunkSummaryOutput(
+                chapter_title="测试章节",
+                chapter_path=["测试"],
+                key_points=[],
+                detailed_summary="详细摘要内容足够长",
+                context_brief="上下文提示足够长",
+            )
 
     def test_missing_required_fields(self) -> None:
         """缺少必填字段应报错。"""
@@ -114,8 +135,8 @@ class TestChapterSummary:
             chapter_title="第二节",
             chapter_path=["第二节"],
             key_points=["要点1"],
-            detailed_summary="摘要内容",
-            context_brief="上下文",
+            detailed_summary="摘要内容足够长以满足 min_length=10",
+            context_brief="上下文足够长以满足 min_length=5",
         )
         ch = ChapterSummary(
             chapter_title="第二节",
@@ -130,9 +151,22 @@ class TestChapterSummary:
 class TestDocumentSummary:
     def test_valid_document_summary(self) -> None:
         """完整文档摘要结构验证。"""
+        summary_output = ChunkSummaryOutput(
+            chapter_title="第一节",
+            chapter_path=["第一节"],
+            key_points=["要点1"],
+            detailed_summary="摘要内容足够长以满足 min_length=10",
+            context_brief="上下文足够长以满足 min_length=5",
+        )
+        chapter_summary = ChapterSummary(
+            chapter_title="第一节",
+            chapter_path=["第一节"],
+            summary=summary_output,
+            chunk_count=1,
+        )
         doc = DocumentSummary(
             source="600000_2024-12-31",
-            chapter_summaries=[],
+            chapter_summaries=[chapter_summary],
             all_key_points=["全文要点1"],
             all_key_data=[],
             total_chunks_processed=10,

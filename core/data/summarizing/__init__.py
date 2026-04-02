@@ -12,9 +12,7 @@ Direct imports remain available:
 """
 from .chapter_merger import build_single_chunk_chapter, merge_chapter_summaries
 from .chunk_summarizer import (
-    DEFAULT_MAX_RETRIES,
-    DEFAULT_MAX_TOKENS,
-    DEFAULT_MODEL,
+    MAX_OUTPUT_TOKENS,
     DEFAULT_TEMPERATURE,
     build_summarize_context,
     summarize_chunk,
@@ -39,10 +37,8 @@ __all__ = [
     "SummarizeContext",
     "build_summarize_context",
     "summarize_chunk",
-    "DEFAULT_MODEL",
     "DEFAULT_TEMPERATURE",
-    "DEFAULT_MAX_TOKENS",
-    "DEFAULT_MAX_RETRIES",
+    "MAX_OUTPUT_TOKENS",
     # Merger
     "build_single_chunk_chapter",
     "merge_chapter_summaries",

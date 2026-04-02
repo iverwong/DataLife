@@ -10,22 +10,19 @@
 
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING
 
 import logfire
+from pydantic_ai import ModelSettings
 
-from core.agents.base import AgentRunner
-from core.data.exceptions import LLMResponseError
 from .summary_models import ChapterSummary, ChunkSummaryOutput, KeyDataItem
 
 if TYPE_CHECKING:
     pass
 
 # ──────────────────────────────────────────────
-DEFAULT_MODEL: str = "deepseek-chat"
 DEFAULT_TEMPERATURE: float = 0.3
-DEFAULT_MAX_TOKENS: int = 4096
+MAX_OUTPUT_TOKENS: int = 8192
 
 
 def build_single_chunk_chapter(
@@ -52,11 +49,8 @@ async def _run_merge_agent(
     chapter_title: str,
     chapter_path: list[str],
     *,
-    model: str,
-    api_key: str | None,
     temperature: float,
-    max_tokens: int,
-    retries: int,
+    max_tokens: int = MAX_OUTPUT_TOKENS,
 ) -> ChunkSummaryOutput:
     """内部函数：调用 LLM 合并多个子块摘要。
 
@@ -64,8 +58,6 @@ async def _run_merge_agent(
         sub_summaries: 子块摘要列表
         chapter_title: 章节标题
         chapter_path: 章节路径
-        model: 模型名称
-        api_key: API Key
         temperature: 温度
         max_tokens: 最大 token
 
@@ -99,12 +91,6 @@ async def _run_merge_agent(
 
     user_prompt = "".join(prompt_parts)
 
-    # 获取 API Key
-    if api_key is None:
-        api_key = os.environ.get("DEEPSEEK_API_KEY")
-        if not api_key:
-            raise LLMResponseError("DEEPSEEK_API_KEY not found in environment")
-
     logfire.debug(
         "Running merge agent for chapter: {chapter_title}, sub_count={count}",
         chapter_title=chapter_title,
@@ -112,16 +98,13 @@ async def _run_merge_agent(
     )
 
     # 延迟导入避免循环依赖
-    from core.agents.summarizing import ChapterMergerConfig  # type: ignore[attr-defined]
+    from core.agents import chapter_merger_agent
 
-    config = ChapterMergerConfig(
-        model=model,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        retries=retries,
+    result = await chapter_merger_agent.run(
+        user_prompt,
+        model_settings=ModelSettings(temperature=temperature, max_tokens=max_tokens),
     )
-    async with AgentRunner(config, api_key) as runner:
-        return await runner.run(user_prompt)
+    return result.output
 
 
 async def merge_chapter_summaries(
@@ -129,11 +112,8 @@ async def merge_chapter_summaries(
     chapter_title: str,
     chapter_path: list[str],
     *,
-    model: str = DEFAULT_MODEL,
-    api_key: str | None = None,
     temperature: float = DEFAULT_TEMPERATURE,
-    max_tokens: int = DEFAULT_MAX_TOKENS,
-    retries: int = 3,
+    max_tokens: int = MAX_OUTPUT_TOKENS,
 ) -> ChapterSummary:
     """将同一章节的多个子块摘要合并为章节级摘要。
 
@@ -144,11 +124,8 @@ async def merge_chapter_summaries(
         sub_summaries: 同一章节下所有子块的 ChunkSummaryOutput，按原文顺序排列
         chapter_title: 章节标题
         chapter_path: 章节路径
-        model: DeepSeek 模型名称
-        api_key: API Key
         temperature: 生成温度
         max_tokens: 最大输出 token
-        retries: 重试次数
 
     Returns:
         ChapterSummary：合并后的章节级摘要
@@ -171,11 +148,8 @@ async def merge_chapter_summaries(
             sub_summaries,
             chapter_title,
             chapter_path,
-            model=model,
-            api_key=api_key,
             temperature=temperature,
             max_tokens=max_tokens,
-            retries=retries,
         )
         return ChapterSummary(
             chapter_title=merged.chapter_title,

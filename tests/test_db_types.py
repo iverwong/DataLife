@@ -250,18 +250,18 @@ class TestJsonPydanticModel:
                 ChunkSummaryOutput(
                     chapter_title="测试章节",
                     chapter_path=["第一章"],
-                    key_points=[],
-                    detailed_summary="摘要",
+                    key_points=["测试要点"],
+                    detailed_summary="这是详细而有效的摘要内容",
                     key_data=[],
-                    context_brief="",
+                    context_brief="有效的上下文提示",
                 ),
                 ChunkSummaryOutput(
                     chapter_title="测试章节",
                     chapter_path=["第一章"],
-                    key_points=[],
-                    detailed_summary="摘要",
+                    key_points=["测试要点"],
+                    detailed_summary="这是详细而有效的摘要内容",
                     key_data=[],
-                    context_brief="",
+                    context_brief="有效的上下文提示",
                 ),
             ),
             # None
@@ -293,10 +293,10 @@ class TestJsonPydanticModel:
         type_adapter = JsonPydanticModel(ChunkSummaryOutput)
 
         input_data = ChunkSummaryOutput(
-            chapter_title="测试",
+            chapter_title="测试章节",
             chapter_path=["第一章"],
             key_points=["要点1"],
-            detailed_summary="摘要内容",
+            detailed_summary="这是详细的摘要内容。",
             key_data=[
                 KeyDataItem(
                     label="营收",
@@ -305,14 +305,14 @@ class TestJsonPydanticModel:
                     period=PeriodInfo(description="2024年"),
                 )
             ],
-            context_brief="上下文",
+            context_brief="有效的上下文提示",
         )
 
         db_value = type_adapter.process_bind_param(input_data, sqlite.dialect())
         result = type_adapter.process_result_value(db_value, sqlite.dialect())
 
         assert result is not None
-        assert result.chapter_title == "测试"
+        assert result.chapter_title == "测试章节"
         assert len(result.key_data) == 1
         assert result.key_data[0].label == "营收"
         assert result.key_data[0].value == 500000.0

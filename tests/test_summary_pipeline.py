@@ -74,7 +74,7 @@ def _make_mock_summary(title: str, path: list[str], idx: int) -> ChunkSummaryOut
         chapter_title=title,
         chapter_path=path,
         key_points=[f"{title}要点{idx}"],
-        detailed_summary=f"{title}摘要{idx}",
+        detailed_summary=f"{title}的详细摘要内容，编号{idx}，用于测试摘要流水线",
         context_brief=f"{title}上下文{idx}",
     )
 
@@ -100,8 +100,8 @@ class TestSummarizeDocument:
             chapter_title="第二节",
             chapter_path=["第二节"],
             key_points=["合并要点"],
-            detailed_summary="第二节合并摘要",
-            context_brief="第二节合并上下文",
+            detailed_summary="第二节的详细摘要内容，用于测试摘要流水线",
+            context_brief="第二节的上下文信息",
         )
 
         with patch(
@@ -220,7 +220,7 @@ class TestChapterKeyConsistency:
                 chapter_title=title,
                 chapter_path=chunk.chapter_path,
                 key_points=[f"{title}要点"],
-                detailed_summary=f"{title}摘要",
+                detailed_summary=f"{title}的详细摘要内容，用于测试",
                 context_brief=brief,
             )
 
@@ -234,7 +234,7 @@ class TestChapterKeyConsistency:
                 chapter_title="第二节", chapter_path=["第二节"],
                 summary=ChunkSummaryOutput(
                     chapter_title="第二节", chapter_path=["第二节"],
-                    key_points=["x"], detailed_summary="x", context_brief="x",
+                    key_points=["x"], detailed_summary="第二节的详细摘要内容", context_brief="第二节上下文信息",
                 ),
                 chunk_count=2,
             ),
@@ -277,7 +277,7 @@ class TestChapterKeyConsistency:
             title = chunk.chapter_path[-1]
             return ChunkSummaryOutput(
                 chapter_title=title, chapter_path=chunk.chapter_path,
-                key_points=["p"], detailed_summary="s",
+                key_points=["p"], detailed_summary=f"{title}的详细摘要内容",
                 context_brief=f"{title}_brief",
             )
 
@@ -291,7 +291,7 @@ class TestChapterKeyConsistency:
                 chapter_title="章节A", chapter_path=["章节A"],
                 summary=ChunkSummaryOutput(
                     chapter_title="章节A", chapter_path=["章节A"],
-                    key_points=["x"], detailed_summary="x", context_brief="x",
+                    key_points=["x"], detailed_summary="章节A的详细摘要内容", context_brief="章节A上下文",
                 ),
                 chunk_count=2,
             ),
