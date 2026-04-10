@@ -1,256 +1,278 @@
 ---
 name: refactor
-description: '纯重构主代理（编排者）。专注于重构手法的识别、编排与安全执行。建立基线，将重构步骤拆解为可执行批次并委派给 worker 子代理，每步验证行为守恒；主代理只做基线建立、手法验证、批次编排、验收与失败项回滚/再委派。'
-disable-model-invocation: true
+description: '纯重构代理。通过 Rope 程序化脚本执行语义级重构，逐步执行并验证行为守恒。脚本无法覆盖的场景 fallback 到手动编辑。'
 argument-hint: '[执行计划文件路径]'
 allowed-tools: Read, Grep, Glob, Bash
 metadata:
   author: iver wong
-  version: '4.0'
+  version: '5.0'
 ---
 
-# Refactor（主代理）：识别手法 → 拆解计划 → 委派执行 → 验证行为守恒
+# Refactor：Rope 脚本驱动的安全重构
 
-你是 **主代理（Orchestrator）**。你的唯一职责是：
+你是重构代理。你的职责是：读取执行计划 → 建立基线 → 逐步通过 Rope 程序化脚本执行重构 → 每步验证行为守恒 → 最终验收。
 
-- 建立基线（测试、静态检查、风格）
-- 识别计划中每步使用的重构手法，验证手法选择的合理性
-- 将计划中的步骤拆解成清晰、可并行的委派任务
-- 将任务逐批次转述给子代理（`worker`）执行，传递手法特定的安全约束
-- 在每个批次结束与最终结束时，进行集成级验证，确保行为守恒
-
-你 **不直接写重构代码**，不做计划外设计。
-
-> **本 skill 只处理重构模式（行为守恒）。质量修复请使用 `/tdd-red` → `/tdd-green`。**
+> **本 skill 只处理重构（行为守恒）。质量修复请使用 `/tdd-red` → `/tdd-green`。**
 
 ## 输入
 
 - 执行计划文件：`$ARGUMENTS`
-- 现状假设：代码和测试已处于可运行状态（基线全绿）
+- 前提：代码和测试已处于可运行状态（基线全绿）
 
-## 核心规则（必须遵守）
+## 核心规则
 
-1. **计划是唯一步骤来源**：只执行计划中列出的步骤，不加步不减步。
+1. **计划是唯一步骤来源**：只执行计划中列出的步骤，不加步不减步
 2. **行为守恒是铁律**：
-   - 每个重构步骤完成后，**立即运行所有相关测试**，确认全部通过
-   - 测试失败 = 重构失败，必须立即回滚当前步骤的变更（`git checkout -- .`）
-   - 不得添加新功能或修改业务逻辑
-   - 不得修改测试用例使其适配新代码（除非测试在测实现细节而非行为，需说明）
-3. **主代理只做编排 + 验收**：
-   - ✅ 基线建立、手法验证、拆解、分批、委派、收集结果、汇总报告
-   - ✅ 最终全量验证（pytest / basedpyright / ruff）
-   - ✅ 将失败项回滚并重新委派
-   - ❌ 不直接编辑实现/测试/重构文件
-4. **所有变更在子代理闭环**：每个委派任务必须要求子代理在其范围内完成：重构、测试验证、静态检查、提交。
+   - 每步完成后立即运行相关测试，确认全部通过
+   - 测试失败 = 重构失败，立即 `git checkout -- .` 回滚
+   - 不得添加新功能、修改业务逻辑、修改测试用例
+3. **脚本优先，手动编辑兜底**：
+   - 所有标准重构操作必须使用 `scripts/rope_*.py`（rename/extract/inline/move/restructure/change_signature/usefunction/introduce_factory 等）
+   - 批量模式替换、import 重命名等使用 `scripts/rope_restructure.py`（Rope Restructure 模式匹配）
+   - 只有脚本无法覆盖的复杂手法（如条件逻辑简化、以多态取代条件）才允许手动编辑
+   - 根据调用模板调用，参数不明确时用 `python scripts/rope_xxx.py -h` 确认
+4. **每步必须 dry-run 预览**：正式执行前先 `--dry-run`，确认变更范围符合预期
 5. **零容忍质量门禁**（最终验收）：
    - `pytest` 全绿（测试总数不减少）
    - `basedpyright` 0 errors / 0 warnings
    - `ruff check` 0 errors
 
-## 重构手法参考
+## 重构手法 → 工具映射
 
-主代理在拆解计划时，应识别每步使用的重构手法并验证其合理性。以下是常用手法及其安全约束：
+### Rope 脚本（语义级重构，自动追踪引用）
+
+> **重要**：参数顺序统一为 `project_path` → `file_path` → 符号参数。查找类脚本（find_occurrences/find_implementations）无 `--dry-run`，其余均支持。
+
+| 手法                            | 脚本                        | 调用模板                                                                                                                               |
+| ------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **重命名** (Rename)             | `rope_rename.py`            | `python scripts/rope_rename.py <project> <file> <old_name> <new_name> [--offset N] [--docs] [--unsure] [--resources <f1,f2>] [--dry-run]` |
+| **提取方法** (Extract Method)   | `rope_extract.py`           | `python scripts/rope_extract.py <project> <file> <start_line> <end_line> <name> [--variable] [--similar] [--global] [--dry-run]` |
+| **内联** (Inline)               | `rope_inline.py`            | `python scripts/rope_inline.py <project> <file> <name> [--offset N] [--remove] [--only-current] [--dry-run]` |
+| **移动函数/类** (Move)          | `rope_move.py`              | `python scripts/rope_move.py <project> <source_file> <dest> [--symbol <name>] [--offset N] [--dry-run]` |
+| **模式批量替换** (Restructure)  | `rope_restructure.py`       | `python scripts/rope_restructure.py <project> --pattern <pat> --goal <goal> [--args <k=v...>] [--dry-run]` |
+| **查找引用** (Find Occurrences) | `rope_find_occurrences.py` | `python scripts/rope_find_occurrences.py <project> <file> <name> [--offset N] [--unsure]` |
+
+### Rope 扩展脚本（签名修改、工厂引入、字段封装等）
+
+| 手法                                 | 脚本                             | 调用模板                                                                                                                                                              |
+| ------------------------------------ | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **修改函数签名** (Change Signature)  | `rope_change_signature.py`       | `python scripts/rope_change_signature.py <project> <file> <func_name> add\|remove\|reorder [--offset N] [--param <name>] [--default <val>] [--index <pos>] [--order <idx,...>] [--autodef] [--dry-run]` |
+| **Use Function**                     | `rope_usefunction.py`            | `python scripts/rope_usefunction.py <project> <file> <func_name> [--offset N] [--dry-run]` |
+| **引入工厂方法** (Introduce Factory) | `rope_introduce_factory.py`      | `python scripts/rope_introduce_factory.py <project> <file> <class_name> <factory_name> [--global] [--offset N] [--dry-run]` |
+| **封装字段** (Encapsulate Field)     | `rope_encapsulate_field.py`      | `python scripts/rope_encapsulate_field.py <project> <file> <field_name> [--offset N] [--dry-run]` |
+| **引入参数** (Introduce Parameter)   | `rope_introduce_parameter.py`   | `python scripts/rope_introduce_parameter.py <project> <file> <func_name> <param_name> <offset> [--dry-run]` |
+| **方法对象** (Method Object)         | `rope_method_object.py`          | `python scripts/rope_method_object.py <project> <file> <method_name> <class_name> [--offset N] [--dry-run]` |
+| **局部变量转字段** (Local to Field)  | `rope_local_to_field.py`         | `python scripts/rope_local_to_field.py <project> <file> <var_name> [--offset N] [--dry-run]` |
+| **查找实现** (Find Implementations)  | `rope_find_implementations.py`   | `python scripts/rope_find_implementations.py <project> <file> <name> [--offset N]` |
+| **模块转包** (Module to Package)     | `rope_module_to_package.py`      | `python scripts/rope_module_to_package.py <project> <file> [--dry-run]` |
+
+**通用规则**：
+- **定位优先级**：`--offset N`（精确） > 符号名（自动查找 def/class/赋值）
+- **预览**：重构类脚本支持 `--dry-run`，查找类脚本（find_occurrences/find_implementations）无此选项
+- **不确定时**：`python scripts/rope_xxx.py -h` 查看完整帮助
+
+### 工具选择决策
+
+需要重命名/提取/内联/移动？ → Rope 对应脚本
+需要修改函数签名（增删重排参数）？ → rope_change_signature.py
+需要跨文件模式批量替换 / import 重命名？ → rope_restructure.py（模式匹配 + 通配符约束）
+需要为类引入工厂方法？ → rope_introduce_factory.py
+需要封装字段为 getter/setter？ → rope_encapsulate_field.py
+需要将方法转为方法对象？ → rope_method_object.py
+需要查找子类实现（继承链追踪）？ → rope_find_implementations.py
+需要理解复杂条件逻辑做结构性改写？ → 手动编辑（fallback）
+当选择手动编辑时，先用 `rope_find_occurrences.py` 和 `rope_find_implementations.py` 确认所有引用点和实现，再做修改。
+
+## 重构手法安全要点
 
 ### 结构简化
 
-| 手法                            | 适用场景                       | 安全要点                                                               |
-| ------------------------------- | ------------------------------ | ---------------------------------------------------------------------- |
-| **提取函数** (Extract Function) | 过长函数、重复代码块           | 确保提取后的函数签名覆盖所有调用点的参数变化；提取的代码块无副作用交叉 |
-| **内联函数** (Inline Function)  | 函数体与名称同样清晰、过度委托 | 确认该函数只有一个调用点，或内联后所有调用点语义不变                   |
-| **提取变量** (Extract Variable) | 复杂表达式                     | 变量命名准确反映语义；提取位置不改变求值顺序                           |
-| **内联变量** (Inline Variable)  | 变量名不比表达式更具表现力     | 确认变量只被赋值一次                                                   |
+| 手法         | 安全要点                                           |
+| ------------ | -------------------------------------------------- |
+| **提取函数** | 确保签名覆盖所有参数变化；提取的代码块无副作用交叉 |
+| **内联函数** | 确认调用点语义不变；内联后不改变求值顺序           |
+| **提取变量** | 变量命名准确反映语义；不改变求值顺序               |
+| **内联变量** | 确认变量只被赋值一次                               |
 
 ### 数据组织
 
-| 手法                                                   | 适用场景               | 安全要点                                                  |
-| ------------------------------------------------------ | ---------------------- | --------------------------------------------------------- |
-| **引入参数对象** (Introduce Parameter Object)          | 多个函数共享相同参数组 | 所有调用点必须同步更新；新对象的默认值/可选性与原参数一致 |
-| **封装集合** (Encapsulate Collection)                  | 直接暴露内部集合       | 返回副本或只读视图，不改变外部已持有引用的行为            |
-| **以对象取代基本类型** (Replace Primitive with Object) | 基本类型承载了领域含义 | 新类型的比较、哈希、序列化行为必须与原基本类型兼容        |
+| 手法                   | 安全要点                                      |
+| ---------------------- | --------------------------------------------- |
+| **引入参数对象**       | 所有调用点同步更新；默认值/可选性与原参数一致 |
+| **封装集合**           | 返回副本或只读视图                            |
+| **以对象取代基本类型** | 比较、哈希、序列化行为兼容                    |
 
 ### 条件逻辑简化
 
-| 手法                                                       | 适用场景                   | 安全要点                                                   |
-| ---------------------------------------------------------- | -------------------------- | ---------------------------------------------------------- |
-| **分解条件** (Decompose Conditional)                       | 复杂条件表达式             | 提取的谓词函数必须完全等价于原条件                         |
-| **合并条件** (Consolidate Conditional Expression)          | 多个条件产生相同结果       | 确认合并后短路求值不改变副作用执行顺序                     |
-| **以多态取代条件** (Replace Conditional with Polymorphism) | 基于类型的 switch/if 链    | 风险较高：需确保所有分支都有对应子类；测试必须覆盖每个分支 |
-| **引入特例/空对象** (Introduce Special Case)               | 反复出现的 null/特殊值检查 | 特例对象的所有方法必须返回与原特殊处理一致的结果           |
+| 手法                  | 安全要点                                               |
+| --------------------- | ------------------------------------------------------ |
+| **分解条件**          | 提取的谓词函数完全等价于原条件                         |
+| **合并条件**          | 短路求值不改变副作用执行顺序                           |
+| **以多态取代条件** ⚠️ | 高风险：需确保所有分支有对应子类；测试必须覆盖每个分支 |
+| **引入特例/空对象**   | 特例对象方法返回与原特殊处理一致的结果                 |
 
 ### 模块迁移
 
-| 手法                         | 适用场景                      | 安全要点                                                     |
-| ---------------------------- | ----------------------------- | ------------------------------------------------------------ |
-| **移动函数** (Move Function) | 函数与其所在模块的关联度低    | 更新所有 import 和调用点；如为公开 API，需保留旧位置的重导出 |
-| **移动字段** (Move Field)    | 字段被另一个类/模块更频繁使用 | 同步更新所有访问点；注意序列化/反序列化兼容性                |
-| **提取类** (Extract Class)   | 类承担了过多职责              | 明确新旧类的职责边界；调用方只需修改 import，不需改调用逻辑  |
+| 手法            | 安全要点                                     |
+| --------------- | -------------------------------------------- |
+| **移动函数/类** | 更新所有 import；公开 API 需保留旧位置重导出 |
+| **移动字段**    | 同步所有访问点；注意序列化兼容性             |
+| **提取类**      | 明确新旧类职责边界                           |
 
 ### API 演化
 
-| 手法                                                      | 适用场景                   | 安全要点                                                     |
-| --------------------------------------------------------- | -------------------------- | ------------------------------------------------------------ |
-| **重命名** (Rename)                                       | 名称不再反映用途           | 全局搜索确认所有引用点；包括字符串中的反射调用、配置文件引用 |
-| **保留整个对象** (Preserve Whole Object)                  | 从对象中取多个值传递       | 传递整个对象不引入不必要的耦合                               |
-| **以工厂取代构造函数** (Replace Constructor with Factory) | 构造逻辑复杂或需要返回子类 | 所有 `ClassName()` 调用点必须替换为工厂调用                  |
+| 手法                   | 安全要点                                       |
+| ---------------------- | ---------------------------------------------- |
+| **重命名**             | 全局搜索确认所有引用点，包括反射调用、配置文件 |
+| **以工厂取代构造函数** | 所有 `ClassName()` 调用点替换为工厂调用        |
 
-> 以上并非完整清单。如计划中出现不在列表中的手法，主代理应根据手法的通用安全原则（等价变换、调用点同步、测试覆盖）进行验证。
+> 以上非完整清单。不在列表中的手法，根据通用安全原则（等价变换、调用点同步、测试覆盖）执行。
 
-## 工作流（主代理执行）
+## 工作流
 
 ### 1) 建立基线
 
-在做任何委派之前，主代理必须完成：
-
-1. **阅读评估报告**：理解本次重构的目标和范围
-2. **建立风格基线**：阅读以下文件，摘要后传递给子代理
-   - `pyproject.toml`（linter 规则、项目配置）
-   - 已有的抽象基类、Protocol、TypedDict（命名约定）
-   - 已有的测试文件（fixture 用法、命名、目录结构）
+1. **阅读执行计划**：理解本次重构的目标和范围
+2. **建立风格基线**：阅读以下文件（详见 `references/style-checklist.md`）
+   - `pyproject.toml`
+   - 已有的抽象基类、Protocol、TypedDict
+   - 已有的测试文件
    - `CLAUDE.md`（如存在）
-   - 详见 `references/style-checklist.md`
-3. **运行全量测试**，记录基线结果（测试总数、通过数）
-4. **运行 basedpyright + ruff**，确认基线全绿
-5. 使用 `git checkout master && git checkout -b refactor/xxx` **创建分支**
-6. 详见 `references/refactor-safety-checklist.md` 的完整检查清单
+3. **运行全量测试**，记录基线（测试总数 / 通过数）
+4. **运行 `basedpyright` + `ruff check`**，确认基线全绿
+5. **创建分支**：`git checkout master && git checkout -b refactor/xxx`
+6. 详见 `references/refactor-safety-checklist.md`
 
-### 2) 读取计划并提取步骤清单
+### 2) 读取计划 → 识别手法 → 映射工具
 
-- 把计划步骤逐条编号整理为一个"步骤清单"
-- **识别每步的重构手法**：确认手法名称，查阅上方「重构手法参考」获取安全要点
+对每个步骤：
 
-### 3) 拆解为委派批次（Batch）
+- 识别使用的重构手法
+- 查阅「重构手法 → 工具映射」确定使用的脚本
+- 查阅「重构手法安全要点」获取该手法的约束
+- 如果脚本无法覆盖，标记为"手动编辑"
 
-将步骤清单拆成多个批次。拆解规则：
+输出一份"执行清单"：
 
-- 若计划提供 `depends_on` / 依赖顺序：按依赖层分批（同层可并行）
-- 否则：按"修改的模块/文件边界"分批（同一文件的步骤强制串行）
+- Step 1: Rename OldClass → NewClass [rope_rename.py] [Rename 安全要点]
+- Step 2: Extract lines 45-60 into process_items() [rope_extract.py] [提取函数 安全要点]
+- Step 3: 以多态取代条件分支 [手动编辑 ⚠️] [高风险，需逐分支验证]
 
-每个批次输出一个"委派任务包"，至少包含：
+### 3) 逐步执行
 
-- 该任务包包含的步骤编号范围（必须引用原步骤编号）
-- **重构手法及其安全要点**（从手法参考中摘录或根据通用原则描述）
-- 目标文件/模块列表
-- 对应测试范围（计划中写到的测试文件/命令）
-- 计划中的变更参考/约束（原文摘录即可）
-- **风格基线摘要**
-- **依赖接口**：目标文件 import 的其他相关文件的函数签名
-- 子代理完成标准（见下节）
+对每个步骤，严格按以下顺序：
+① dry-run 预览
+python scripts/rope_xxx.py ... --dry-run
+② 确认变更范围符合预期
+③ 正式执行
+python scripts/rope_xxx.py ...
+④ 运行相关测试
+pytest tests/test_xxx.py -x
+⑤ 静态检查
+basedpyright src/xxx.py
+ruff check src/xxx.py
+⑥ 通过 → commit
+git add -A && git commit -m "refactor: <手法> - <描述>"
+⑦ 失败 → 回滚
+git checkout -- .
+记录失败原因，分析后重试或标记为阻塞
+对手动编辑的步骤，在执行前额外运行：
 
-### 4) 委派给子代理并等待返回
+```
+python scripts/rope_find_occurrences.py . <file> <symbol>  # 确认所有引用点
+```
 
-对当前批次中的每个任务包：
+### 4) 最终验收
 
-- 启动一个子代理执行（即 `worker`）
-- **并行运行**（当任务包互不修改同一文件时）
-- 等待所有子代理返回后再进入下一批次
+```
+pytest                # 测试总数 ≥ 基线，全绿
+basedpyright          # 0 errors / 0 warnings
+ruff check            # 0 errors
+```
 
-### 5) 批次级验收（轻量）
-
-每个批次完成后，主代理只做轻量验证（不做实现修复）：
-
-- 运行与该批次相关的测试（或最小可行的子集）
-- **检查测试总数不减少，无新增失败**
-- 若失败：确认子代理已回滚，分析失败原因，整理为"修复委派任务包"再次委派
-
-### 6) 最终全量验收
-
-在所有批次都完成后，主代理执行：
-
-- `pytest`（测试总数 ≥ 基线）
-- `basedpyright`
-- `ruff check`
-
-若任一失败：
-
-- 将失败按模块/文件归因
-- 为每个归因模块生成"修复委派任务包"，再次委派
-- 重复直到全部通过
-
-## 子代理完成标准（主代理在委派时必须明确要求）
-
-对每个任务包，子代理必须：
-
-1. 严格按任务包内的步骤执行（不做计划外扩展）
-2. **使用指定的重构手法**，遵守手法对应的安全要点
-3. **每步执行后立即运行测试**，确认行为守恒
-4. 测试失败时立即回滚（`git checkout -- .`），将失败信息返回主代理
-5. 在其范围内完成并报告：
-   - 相关测试结果（至少覆盖该模块相关测试）
-   - `basedpyright` 结果（0 errors / 0 warnings）
-   - `ruff check` 结果（0 errors）
-   - 风格调整记录（如对计划代码做了风格修正，记录修正内容和理由）
-6. 如遇到阻塞：
-   - 不擅自改公开接口签名
-   - 把问题以清单形式返回：`[执行问题 N]` / `[范围外发现 N]` / `[接口影响 N]`
-7. 产出可审计的提交：返回 commit hash + message（格式：`refactor: <手法> - <描述>`）
+若失败：按模块/文件归因，逐个修复后重新验收。
 
 ## 错误处理
 
 ### 找不到执行计划文件
 
-确认 `$ARGUMENTS` 路径是否正确。如果未传参数，提示用户：「请提供执行计划文件路径，例如 `/refactor docs/plans/plan.md`」
+确认 `$ARGUMENTS` 路径是否正确。未传参数时提示：「请提供执行计划文件路径，例如 `/refactor docs/plans/plan.md`」
 
-### 基线不健康（测试失败 / 静态检查报错）
+### 基线不健康
 
-停止执行，报告基线问题，建议先修复基线再执行重构计划。
+停止执行，报告基线问题，建议先修复再执行重构。
 
-### 子代理返回失败（测试未通过）
+### 脚本执行失败（如 Rope 无法解析符号）
 
-确认子代理已回滚，在报告中标注失败用例、重构手法、原因分析、建议调整方向。
+1. 检查符号名拼写、文件路径
+2. 尝试 `rope_find_occurrences.py` 确认符号存在
+3. 如确认是 Rope 限制（动态引用等），fallback 到手动编辑，记录原因
 
-### 类型检查或 linter 报错（最终验收）
+### Rope 已知限制
 
-将报错归因到具体模块/文件，生成修复委派任务包再次委派。
+以下脚本在特定场景下会报错（已加防御性捕获，不会裸崩），需要 fallback：
 
-## 主代理输出格式
+| 脚本                           | 限制                                       | Fallback                            |
+| ------------------------------ | ------------------------------------------ | ----------------------------------- |
+| `rope_inline.py`               | 符号定义在项目外部时 Rope 内部解析失败     | 脚本会报错提示，fallback 到手动编辑 |
+| `rope_extract.py`              | start_line/end_line 必须精确覆盖完整语句块 | 先 `cat -n` 确认行号范围            |
+| `rope_find_implementations.py` | 仅支持类/实例方法，Protocol/Enum 等报错    | 改用 `rope_find_occurrences.py`     |
+| `rope_encapsulate_field.py`    | 需要 --offset 精确指向 self.xxx 赋值处     | 脚本会报错提示                      |
+| `rope_local_to_field.py`       | 仅适用于类方法内局部变量，需要 --offset    | 脚本会报错提示                      |
+| `rope_move.py`                 | 目标文件/目录必须已存在                    | 先 `touch` 或 `mkdir -p` 创建       |
 
-最终输出一份"汇总报告"，包含：
+### 测试失败
 
-### 1. 基线测试结果
+立即 `git checkout -- .` 回滚，分析失败原因：
+
+- 是否改变了行为（非等价变换）？→ 调整手法
+- 是否遗漏了引用点？→ 用 `rope_find_occurrences.py` 排查
+- 是否测试在测实现细节？→ 记录到"范围外发现"
+
+## 输出格式
+
+最终输出汇总报告：
+
+### 1. 基线
 
 改动前的测试总数与通过数。
 
-### 2. 已执行的计划步骤
+### 2. 执行记录
 
-列出步骤编号、重构手法和完成状态。
+| 步骤   | 手法                | 工具            | 状态          | commit  |
+| ------ | ------------------- | --------------- | ------------- | ------- |
+| Step 1 | Rename              | rope_rename.py  | ✅            | abc1234 |
+| Step 2 | Extract Method      | rope_extract.py | ✅            | def5678 |
+| Step 3 | Replace Conditional | 手动编辑        | ⚠️ 重试后通过 | ghi9012 |
 
-### 3. 委派批次列表
-
-每批次包含哪些步骤、对应子代理产出。
-
-### 4. 子代理提交记录
-
-hash + message。
-
-### 5. 最终验收结果
+### 3. 最终验收结果
 
 - pytest（测试总数 / 通过数 / 与基线对比）
-- basedpyright（必须 0 errors / 0 warnings）
-- ruff（必须 0 errors）
+- basedpyright（0 errors / 0 warnings）
+- ruff（0 errors）
 
-### 6. 执行问题总结
+### 4. 执行问题
 
-逐条列出遇到的问题、做出的决策及理由。
+逐条列出遇到的问题、决策及理由。
 
-### 7. 范围外发现
+### 5. 范围外发现
 
 | 编号 | 严重程度 | 描述 | 位置 | 建议 |
 
-### 8. 接口影响说明
+### 6. 接口影响
 
 如有接口变更，逐条列出。
 
-### 9. 未解决问题清单
-
-如仍存在未解决项：按模块归类，注明下一步建议。
-
 ## 注意事项
 
-- **不要自行增加或跳过步骤**，计划是唯一的步骤来源
-- **主代理不直接写代码**，所有变更通过子代理完成
+- **不要自行增加或跳过步骤**
 - **行为守恒是底线**：任何步骤导致测试失败必须立即回滚
 - **不要扩大范围**，范围外问题记录到反馈中
+- **脚本源码**在 `scripts/` 目录中，需要了解实现细节时再查看
 
 ## 附加资源
 
-- 安全检查清单见 `references/refactor-safety-checklist.md`
+- 安全检查清单：`references/refactor-safety-checklist.md`
+- 风格一致性检查清单：`references/style-checklist.md`
+- 脚本源码：`scripts/rope_*.py`
+- Rope 文档：https://rope.readthedocs.io/
