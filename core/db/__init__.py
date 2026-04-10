@@ -24,10 +24,6 @@ from core.db.engine import (
 )
 from core.db.models import (
     Base,
-    ChapterSummaryRecord,
-    ChunkMetaRecord,
-    ChunkSummaryRecord,
-    DocumentSummaryRecord,
     HashRecord,
     UpdateRecord,
 )
@@ -222,10 +218,6 @@ __all__ = [
     "Base",
     "UpdateRecord",
     "HashRecord",
-    "ChunkMetaRecord",
-    "ChunkSummaryRecord",
-    "ChapterSummaryRecord",
-    "DocumentSummaryRecord",
     # Data classes
     "HashContent",
     "HashContentWithHash",
