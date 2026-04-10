@@ -1,8 +1,3 @@
-"""Agent 注册中心：集中导出所有 agent 实例。"""
-from core.agents.chapter_merger_agent import chapter_merger_agent
-from core.agents.chunk_summarizer_agent import chunk_summarizer_agent
+"""Agent 注册中心。（已清理：原 RAG 链路 Agent 已移除）"""
 
-__all__ = [
-    "chunk_summarizer_agent",
-    "chapter_merger_agent",
-]
+from __future__ import annotations
