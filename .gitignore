@@ -62,3 +62,6 @@ Thumbs.db
 
 # plan
 /.claude/plans/
+
+# rope
+/.ropeproject/
