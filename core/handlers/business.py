@@ -5,6 +5,7 @@
 
 from datetime import datetime
 
+import httpx
 import logfire
 
 from core.data import get_business
@@ -50,8 +51,8 @@ async def process_business_data_for_stock_list(stock_list: list[StockPool]) -> N
 
             try:
                 business_data = await get_business(stock_code)
-            except Exception:
-                logfire.exception("获取主营构成数据失败")
+            except (httpx.HTTPError, ValueError, KeyError) as e:
+                logfire.exception("获取主营构成数据失败: {e}", e=e)
                 continue
 
             # 构建去重内容

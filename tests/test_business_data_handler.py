@@ -8,6 +8,7 @@ Test Categories:
 from datetime import date
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 from pandas import DataFrame
 
@@ -455,7 +456,7 @@ class TestProcessBusinessDataForStockList:
             patch("core.handlers.business._should_update_half_year", return_value=True),
             patch(
                 "akshare.stock_zygc_em",
-                side_effect=Exception("API error"),
+                side_effect=httpx.HTTPError("API error"),
             ),
         ):
             # Act - 不应抛出异常，而是记录日志并跳过

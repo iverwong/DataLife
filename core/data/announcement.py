@@ -48,6 +48,51 @@ class AnnouncementWithContent(Announcement):
 CNINFO_BASE_URL = "https://static.cninfo.com.cn/"
 FILTERED_KEYWORDS = ["摘要", "英文", "图文版"]
 
+# 懒加载：httpx.AsyncClient 初始为 None，首次调用时创建
+_httpx_client: httpx.AsyncClient | None = None
+
+
+def get_httpx_client() -> httpx.AsyncClient:
+    """获取 httpx.AsyncClient 实例（懒加载）。
+
+    首次调用时创建客户端并缓存，后续调用直接返回。
+    与 Notion 客户端分离，无速率限制，适合巨潮 API 调用。
+    """
+    global _httpx_client
+    if _httpx_client is None:
+        _httpx_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(30.0, connect=10.0),
+            follow_redirects=True,
+        )
+    return _httpx_client
+
+
+async def close_httpx_client() -> None:
+    """关闭 httpx.AsyncClient 客户端。
+
+    提供幂等性保护：若客户端已关闭或从未创建，则跳过关闭操作。
+    """
+    global _httpx_client
+
+    if _httpx_client is None:
+        logfire.debug("httpx.AsyncClient 从未创建，跳过关闭")
+        return
+
+    if _httpx_client.is_closed:
+        logfire.debug("httpx.AsyncClient 已关闭，跳过")
+        return
+
+    try:
+        await _httpx_client.aclose()
+        logfire.debug("httpx.AsyncClient 已关闭")
+    except RuntimeError as e:
+        if "Event loop is closed" in str(e):
+            logfire.debug("事件循环已关闭，跳过 httpx 客户端关闭")
+        else:
+            raise
+    finally:
+        _httpx_client = None
+
 
 def _convert_item_to_announcement(item: AnnouncementItem) -> Announcement:
     """将 API 响应中的 AnnouncementItem 转换为 Announcement 数据类"""
@@ -115,34 +160,34 @@ async def get_announcements(
         "isHLtitle": "true",
     }
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    client = get_httpx_client()
+    res = await client.post(url, params=payload)
+    try:
+        _ = res.raise_for_status()
+    except httpx.HTTPStatusError:
+        logfire.exception("获取公告请求失败")
+        return []
+    first_page = AnnouncementsResponse.model_validate(res.json())
+
+    if first_page.totalAnnouncement == 0:
+        logfire.info("未获取到公告数据")
+        return []
+
+    # 处理 announcements 为 None 的情况
+    announcements: list[AnnouncementItem] = list(first_page.announcements or [])
+    # 使用接口返回的totalpages参数获取**剩余**页数
+    page_count = first_page.totalpages
+
+    logfire.debug(
+        "首页返回 {count} 条，总页数 {page_count}",
+        count=len(announcements),
+        page_count=page_count,
+    )
+    for i in range(page_count):
+        payload["pageNum"] = str(i + 2)
         res = await client.post(url, params=payload)
-        try:
-            _ = res.raise_for_status()
-        except httpx.HTTPStatusError:
-            logfire.exception("获取公告请求失败")
-            return []
-        first_page = AnnouncementsResponse.model_validate(res.json())
-
-        if first_page.totalAnnouncement == 0:
-            logfire.info("未获取到公告数据")
-            return []
-
-        # 处理 announcements 为 None 的情况
-        announcements: list[AnnouncementItem] = list(first_page.announcements or [])
-        # 使用接口返回的totalpages参数获取**剩余**页数
-        page_count = first_page.totalpages
-
-        logfire.debug(
-            "首页返回 {count} 条，总页数 {page_count}",
-            count=len(announcements),
-            page_count=page_count,
-        )
-        for i in range(page_count):
-            payload["pageNum"] = str(i + 2)
-            res = await client.post(url, params=payload)
-            page = AnnouncementsResponse.model_validate(res.json())
-            announcements.extend(page.announcements or [])
+        page = AnnouncementsResponse.model_validate(res.json())
+        announcements.extend(page.announcements or [])
 
     # 将report中的摘要、英文版、图文版之类的筛选掉
     before_filter_count = len(announcements)
@@ -183,7 +228,7 @@ async def _get_stock_json(symbol: str = "沪深京") -> dict[str, str]:
     #     url = "http://www.cninfo.com.cn/new/data/hke_stock.json"
     else:
         raise ValueError("不受支持的股票类型！")
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.get(url)
+    client = get_httpx_client()
+    response = await client.get(url)
     stock_data = StockListResponse.model_validate(response.json())
     return {stock.code: stock.orgId for stock in stock_data.stockList}
