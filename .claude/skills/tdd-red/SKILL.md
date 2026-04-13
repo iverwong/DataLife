@@ -1,7 +1,6 @@
 ---
 name: tdd-red
 description: '按执行计划执行 Red 阶段。主代理创建分支、建立风格基线，按文件拆分契约与测试任务并行委派给子代理，最终验证全红并提交。'
-disable-model-invocation: true
 argument-hint: '[执行计划文件路径]'
 allowed-tools: Read, Write, Grep, Glob, Bash
 metadata:
