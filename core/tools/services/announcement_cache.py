@@ -9,11 +9,10 @@ from __future__ import annotations
 import asyncio
 import re
 from pathlib import Path
+from typing import cast
 
 import pymupdf
-import pymupdf4llm
-
-from typing import cast
+import pymupdf4llm  # pyright: ignore[reportMissingTypeStubs]
 
 from core.tools.services.cninfo_client import CninfoClient
 from core.tools.services.types import GrepMatch
@@ -40,9 +39,7 @@ class AnnouncementCache:
         """获取公告缓存文件路径。"""
         return self._cache_dir / f"{announcement_id}.txt"
 
-    async def ensure_cached(
-        self, announcement_id: str, pdf_url: str
-    ) -> Path:
+    async def ensure_cached(self, announcement_id: str, pdf_url: str) -> Path:
         """确保公告全文已缓存，返回文件路径。
 
         已缓存则直接返回；否则下载并解析。
@@ -52,14 +49,10 @@ class AnnouncementCache:
             return path
         return await self._download_and_parse(announcement_id, pdf_url)
 
-    async def _download_and_parse(
-        self, announcement_id: str, pdf_url: str
-    ) -> Path:
+    async def _download_and_parse(self, announcement_id: str, pdf_url: str) -> Path:
         """下载 PDF 并解析为文本，存储到缓存目录。"""
         pdf_bytes = await self._client.download_pdf(pdf_url)
-        text = await asyncio.to_thread(
-            self._parse_pdf_to_text, pdf_bytes
-        )
+        text = await asyncio.to_thread(self._parse_pdf_to_text, pdf_bytes)
         path = self._get_cache_path(announcement_id)
         _ = path.write_text(text, encoding="utf-8")
         return path
@@ -68,8 +61,8 @@ class AnnouncementCache:
     def _parse_pdf_to_text(pdf_bytes: bytes) -> str:
         """使用 PyMuPDF4LLM 将 PDF 转为 Markdown 文本。"""
         doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
-        result = pymupdf4llm.to_markdown(doc=doc)
-        return cast(str, result)
+        result = cast(str, pymupdf4llm.to_markdown(doc=doc))  # pyright: ignore[reportUnknownMemberType]
+        return result
 
     def grep(
         self,
@@ -100,7 +93,7 @@ class AnnouncementCache:
                 start = max(0, i - 1 - _before)
                 end = min(len(lines), i - 1 + 1 + _after)
                 context_before = lines[start : i - 1]
-                context_after = lines[i : end]
+                context_after = lines[i:end]
                 matches.append(
                     GrepMatch(
                         line_number=i,
