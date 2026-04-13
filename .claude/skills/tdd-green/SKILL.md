@@ -1,7 +1,6 @@
 ---
 name: tdd-green
 description: 'Green 阶段主代理（编排者）。读取执行计划阶段 B，按文件拆分实现任务并行委派给子代理，每个子代理闭环完成实现/测试/静态检查；主代理只做分支检查、批次编排、最终全量验证与失败项再委派。'
-disable-model-invocation: true
 argument-hint: '[执行计划文件路径]'
 allowed-tools: Read, Grep, Glob, Bash
 metadata:

@@ -1,7 +1,6 @@
 ---
 name: tdd-red
 description: '按执行计划执行 Red 阶段。主代理创建分支、建立风格基线，按文件拆分契约与测试任务并行委派给子代理，最终验证全红并提交。'
-disable-model-invocation: true
 argument-hint: '[执行计划文件路径]'
 allowed-tools: Read, Write, Grep, Glob, Bash
 metadata:
@@ -80,12 +79,13 @@ git checkout -b feat/<计划中指定的分支名>
 **子代理完成标准：**
 
 1. 严格按计划内容写入源文件和测试文件
-2. 如计划中的代码与项目风格不一致，**按项目风格修正**并记录修正理由
-3. 虚拟环境中运行 `basedpyright` 和 `ruff check` 覆盖本文件和对应测试文件
+2. 如果测试函数只有 docstring 没有 body（签名测试），按 docstring 中的描述编写完整的 mock + assert 实现，使其调用被测函数并因 `NotImplementedError` 失败。不允许留空 body。
+3. 如计划中的代码与项目风格不一致，**按项目风格修正**并记录修正理由
+4. 虚拟环境中运行 `basedpyright` 和 `ruff check` 覆盖本文件和对应测试文件
    - **零容忍**：所有 error 和 warning 必须消除
    - 如 warning 来自三方库类型存根缺失或确有合理原因，使用 `type: ignore[<rule>]` 并附注释说明（包括 Any、Unknown 等常被忽略的警告）
-4. 记录疑问：`[疑问 N] <文件路径>::<类/函数名> — <具体问题描述>`
-5. 返回：已写入的文件列表、风格调整记录、疑问清单、静态检查结果
+5. 记录疑问：`[疑问 N] <文件路径>::<类/函数名> — <具体问题描述>`
+6. 返回：已写入的文件列表、风格调整记录、疑问清单、静态检查结果
 
 **并行运行**所有子代理（它们修改不同文件，互不冲突）。
 
