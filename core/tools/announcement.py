@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from langchain_core.tools import tool
+from langchain_core.tools import tool  # pyright: ignore[reportUnknownVariableType]
 
 from core.tools.services.announcement_cache import AnnouncementCache
 from core.tools.services.cninfo_client import CninfoClient
@@ -87,7 +87,7 @@ def _format_search_results(
     """将搜索结果格式化为 LLM 可读文本。"""
     if not results:
         return "未找到相关公告"
-    lines = []
+    lines: list[str] = []
     for info in results:
         lines.append(
             f"id: {info.announcement_id}\n"
@@ -107,7 +107,7 @@ def _format_grep_results(
     """将 grep 结果格式化为 LLM 可读文本。"""
     if not matches:
         return "未找到匹配内容"
-    parts = []
+    parts: list[str] = []
     for m in matches:
         ctx_before = "\n".join(f"  {c}" for c in m.context_before)
         ctx_after = "\n".join(f"  {c}" for c in m.context_after)

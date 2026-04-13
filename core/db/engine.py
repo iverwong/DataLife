@@ -3,6 +3,7 @@
 提供模块级 Engine + async_sessionmaker + get_session() 上下文管理器。
 所有写操作通过 get_session() 自动 commit/rollback。
 """
+
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
@@ -48,11 +49,11 @@ def _create_engine(db_path: Path = DEFAULT_DB_PATH) -> AsyncEngine:
     )
 
     @event.listens_for(engine.sync_engine, "connect")
-    def _enable_foreign_keys(dbapi_connection, connection_record):
+    def _enable_foreign_keys(dbapi_connection, connection_record):  # pyright: ignore[reportUnknownParameterType, reportMissingParameterType, reportUnusedParameter, reportUnusedFunction]
         """启用 SQLite 外键约束（默认关闭）。"""
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
+        cursor = dbapi_connection.cursor()  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+        cursor.execute("PRAGMA foreign_keys=ON")  # pyright: ignore[reportUnknownMemberType]
+        cursor.close()  # pyright: ignore[reportUnknownMemberType]
 
     return engine
 
@@ -80,9 +81,7 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
     """
     global _session_factory
     if _session_factory is None:
-        _session_factory = async_sessionmaker(
-            get_engine(), expire_on_commit=False
-        )
+        _session_factory = async_sessionmaker(get_engine(), expire_on_commit=False)
     return _session_factory
 
 
@@ -134,6 +133,7 @@ async def dispose_engine() -> None:
 
 
 # ── 测试支持 ────────────────────────────────────────────────
+
 
 def configure_for_testing(engine: AsyncEngine) -> None:
     """替换全局 engine 和 session_factory，用于测试隔离。
