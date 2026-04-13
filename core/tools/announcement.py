@@ -14,8 +14,8 @@ from core.tools.services.announcement_cache import AnnouncementCache
 from core.tools.services.cninfo_client import CninfoClient
 from core.tools.services.types import (
     AnnouncementInfo,
-    GrepMatch,
     GrepInput,
+    GrepMatch,
     ReadInput,
     SearchInput,
 )
@@ -57,8 +57,7 @@ def _resolve(announcement_id: str) -> AnnouncementInfo:
     """
     if announcement_id not in _registry:
         raise KeyError(
-            f"公告 {announcement_id} 未找到，"
-            "请先使用 search_announcements 搜索"
+            f"公告 {announcement_id} 未找到，请先使用 search_announcements 搜索"
         )
     return _registry[announcement_id]
 
@@ -92,9 +91,9 @@ def _format_search_results(
     for info in results:
         lines.append(
             f"id: {info.announcement_id}\n"
-            f"  标题: {info.title}\n"
-            f"  日期: {info.published_date}\n"
-            f"  大小: {info.size_kb}KB\n"
+            + f"  标题: {info.title}\n"
+            + f"  日期: {info.published_date}\n"
+            + f"  大小: {info.size_kb}KB\n"
         )
     header = f"共 {total} 条公告，第 {page} 页：\n"
     return header + "\n".join(lines)
@@ -114,9 +113,9 @@ def _format_grep_results(
         ctx_after = "\n".join(f"  {c}" for c in m.context_after)
         parts.append(
             f"--- Line {m.line_number} ---\n"
-            f"{ctx_before}\n"
-            f">>> {m.content} <<<\n"
-            f"{ctx_after}"
+            + f"{ctx_before}\n"
+            + f">>> {m.content} <<<\n"
+            + f"{ctx_after}"
         )
     body = "\n\n".join(parts)
     truncated = ""
@@ -155,6 +154,7 @@ CATEGORY_MAP: dict[str, str] = {
     "退市整理期": "category_tszlq_szsh",
 }
 
+
 def _resolve_category(category: list[str] | None) -> str:
     """将用户友好的公告类型列表映射为巨潮 API category 参数。"""
     if not category:
@@ -174,8 +174,12 @@ async def search_announcements(
     start_date, end_date = _parse_date_range(date_range)
     resolved_category = _resolve_category(category)
     results, total = await _get_client().search(
-        stock_code, keyword, resolved_category,
-        start_date, end_date, page,
+        stock_code,
+        keyword,
+        resolved_category,
+        start_date,
+        end_date,
+        page,
     )
     _register_results(results)
     return _format_search_results(results, total, page)
@@ -196,7 +200,7 @@ async def grep_announcement(
         info = _resolve(announcement_id)
     except KeyError as e:
         return str(e)
-    await _get_cache().ensure_cached(info.announcement_id, info.pdf_url)
+    _ = await _get_cache().ensure_cached(info.announcement_id, info.pdf_url)
     matches = _get_cache().grep(
         announcement_id=info.announcement_id,
         pattern=pattern,
@@ -206,9 +210,7 @@ async def grep_announcement(
         after_context=after_context,
     )
     total_lines = _get_cache().get_total_lines(info.announcement_id)
-    return _format_grep_results(
-        matches[:head_limit], total_lines, head_limit
-    )
+    return _format_grep_results(matches[:head_limit], total_lines, head_limit)
 
 
 @tool(args_schema=ReadInput)
@@ -222,7 +224,5 @@ async def read_announcement(
         info = _resolve(announcement_id)
     except KeyError as e:
         return str(e)
-    await _get_cache().ensure_cached(info.announcement_id, info.pdf_url)
-    return _get_cache().read_lines(
-        info.announcement_id, offset, limit
-    )
+    _ = await _get_cache().ensure_cached(info.announcement_id, info.pdf_url)
+    return _get_cache().read_lines(info.announcement_id, offset, limit)

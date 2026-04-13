@@ -61,7 +61,7 @@ class AnnouncementCache:
             self._parse_pdf_to_text, pdf_bytes
         )
         path = self._get_cache_path(announcement_id)
-        path.write_text(text, encoding="utf-8")
+        _ = path.write_text(text, encoding="utf-8")
         return path
 
     @staticmethod
