@@ -4,8 +4,6 @@
 无外部依赖，纯逻辑测试。
 """
 
-from __future__ import annotations
-
 from core.agents.announcement_analyst import after_evaluate
 from core.agents.base import (
     MAX_ITERATIONS,

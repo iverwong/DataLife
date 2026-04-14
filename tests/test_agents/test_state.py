@@ -4,8 +4,6 @@
 无外部依赖。
 """
 
-from __future__ import annotations
-
 import pytest
 
 from core.agents.base import AgentState, TodoItem

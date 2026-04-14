@@ -4,8 +4,6 @@
 外部依赖全部 mock：CninfoClient、AnnouncementCache。
 """
 
-from __future__ import annotations
-
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 

@@ -3,8 +3,6 @@
 所有数据库表结构的单一事实来源（Single Source of Truth）。
 """
 
-from __future__ import annotations
-
 from sqlalchemy import String, Text
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column

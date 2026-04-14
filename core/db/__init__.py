@@ -3,8 +3,6 @@
 重新导出 engine、models 和 repository 函数。
 所有存储操作通过 get_session() 获取 session 执行 ORM 操作。
 """
-from __future__ import annotations
-
 import json
 from dataclasses import dataclass
 from datetime import datetime

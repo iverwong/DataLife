@@ -4,8 +4,6 @@
 后台自动处理 API 调用、PDF 下载、解析和缓存。
 """
 
-from __future__ import annotations
-
 from datetime import date
 
 from langchain_core.tools import tool  # pyright: ignore[reportUnknownVariableType]

@@ -4,8 +4,6 @@
 支持 grep 搜索和按行读取。
 """
 
-from __future__ import annotations
-
 import asyncio
 import re
 from pathlib import Path

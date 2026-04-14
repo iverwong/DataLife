@@ -9,8 +9,6 @@ AkShare 返回 pandas DataFrame，不在此建模。
 参考来源: 巨潮资讯网 http://www.cninfo.com.cn
 """
 
-from __future__ import annotations
-
 from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field

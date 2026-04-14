@@ -3,8 +3,6 @@
 State 定义和控制常量，可被未来其他 Agent 复用。
 """
 
-from __future__ import annotations
-
 import operator
 from typing import Annotated, Literal
 

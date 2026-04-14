@@ -11,11 +11,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ./venv/Scripts/python -m ruff
 ```
-## 环境变量
-项目使用 `.env` 管理配置（已 gitignore），开发环境用 `.dev.env`（优先级更高）。
-包含：`NOTION_TOKEN`、`FLOW_DATABASE`、`STOCK_POOL`。
+## 开发环境
+- Python版本： 3.13.3
+
 ## 代码规范
 - 完整 type hints，用 `basedpyright` 检查
+- 无需使用 `from __future__ import annotations`，该行为为默认行为
 - Google 风格 docstring
 - PEP 8，行宽 120
 - 所有 I/O 用 async/await

@@ -4,8 +4,6 @@
 外部依赖 mock：BaseChatModel。
 """
 
-from __future__ import annotations
-
 from unittest.mock import MagicMock
 
 from core.agents.announcement_analyst import build_announcement_analyst_graph

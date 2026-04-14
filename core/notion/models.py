@@ -11,8 +11,6 @@ Notion API 端点 Pydantic 模型
 参考文档: https://developers.notion.com/reference/intro
 """
 
-from __future__ import annotations
-
 from datetime import datetime
 from typing import Annotated, ClassVar, Literal
 

@@ -4,8 +4,6 @@
 便于上层统一捕获和日志记录。
 """
 
-from __future__ import annotations
-
 from typing import override
 
 

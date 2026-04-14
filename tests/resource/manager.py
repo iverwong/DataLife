@@ -8,8 +8,6 @@
 - 基于类的资源定义
 """
 
-from __future__ import annotations
-
 import json
 import pickle
 from dataclasses import dataclass, field

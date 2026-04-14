@@ -6,7 +6,6 @@
 - get_update_time
 - set_update_time
 """
-from __future__ import annotations
 
 import pytest
 

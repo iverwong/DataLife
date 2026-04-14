@@ -4,8 +4,6 @@
 外部依赖：CninfoClient.download_pdf mock，文件系统使用 tmp_path。
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 

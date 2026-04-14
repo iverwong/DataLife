@@ -4,8 +4,6 @@
 外部依赖：httpx 请求全部 mock。
 """
 
-from __future__ import annotations
-
 from datetime import date, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 

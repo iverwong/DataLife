@@ -5,8 +5,6 @@
 计划 3/N 实现节点后补充测试 body。
 """
 
-from __future__ import annotations
-
 import pytest
 
 

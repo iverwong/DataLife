@@ -1,3 +1,1 @@
 """内部领域数据模型。（已清理：原 RAG 链路模型已移除）"""
-
-from __future__ import annotations
