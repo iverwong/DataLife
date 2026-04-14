@@ -5,14 +5,19 @@
                                       └── "有 pending" ────┘
 """
 
-# pyright: reportMissingImports=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportExplicitAny=false, reportUnusedParameter=false, reportArgumentType=false, reportUnknownParameterType=false
 from __future__ import annotations
 
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
-from langgraph.graph import END, START, StateGraph
-from langgraph.graph.state import CompiledStateGraph
+from langgraph.graph import (
+    END,
+    START,
+    StateGraph,
+)
+from langgraph.graph.state import (
+    CompiledStateGraph,
+)
 
 from core.agents.base import (
     MAX_ITERATIONS,
@@ -61,9 +66,7 @@ async def research(
     raise NotImplementedError
 
 
-async def evaluate(
-    state: AgentState, model: BaseChatModel
-) -> dict[str, Any]:
+async def evaluate(state: AgentState, model: BaseChatModel) -> dict[str, Any]:
     """评估节点：提炼本轮笔记，审视 todo 列表，可追加新 todo。
 
     核心节点，是循环的判断点。每轮执行后：
@@ -84,9 +87,7 @@ async def evaluate(
     raise NotImplementedError
 
 
-async def synthesize(
-    state: AgentState, model: BaseChatModel
-) -> dict[str, Any]:
+async def synthesize(state: AgentState, model: BaseChatModel) -> dict[str, Any]:
     """输出节点：基于 todos + notes 生成最终分析报告。
 
     Args:
@@ -126,7 +127,7 @@ def after_evaluate(state: AgentState) -> str:
 
 def build_announcement_analyst_graph(
     model: BaseChatModel,
-) -> CompiledStateGraph:  # pyright: ignore[reportMissingTypeArgument]
+) -> CompiledStateGraph[AgentState, None, AgentState, AgentState]:
     """构建公告查询 Agent 的 LangGraph 编译图。
 
     图结构：START → plan → research → evaluate →[条件边]→ synthesize → END
@@ -156,19 +157,19 @@ def build_announcement_analyst_graph(
 
     graph = StateGraph(AgentState)
 
-    graph.add_node("plan", _plan)
-    graph.add_node("research", _research)
-    graph.add_node("evaluate", _evaluate)
-    graph.add_node("synthesize", _synthesize)
+    _ = graph.add_node("plan", _plan)
+    _ = graph.add_node("research", _research)
+    _ = graph.add_node("evaluate", _evaluate)
+    _ = graph.add_node("synthesize", _synthesize)
 
-    graph.add_edge(START, "plan")
-    graph.add_edge("plan", "research")
-    graph.add_edge("research", "evaluate")
-    graph.add_conditional_edges(
+    _ = graph.add_edge(START, "plan")
+    _ = graph.add_edge("plan", "research")
+    _ = graph.add_edge("research", "evaluate")
+    _ = graph.add_conditional_edges(
         "evaluate",
         after_evaluate,
         {"research": "research", "synthesize": "synthesize"},
     )
-    graph.add_edge("synthesize", END)
+    _ = graph.add_edge("synthesize", END)
 
     return graph.compile()

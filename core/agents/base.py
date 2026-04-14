@@ -9,9 +9,9 @@ import operator
 from typing import Annotated, Literal
 
 from langchain_core.messages import AnyMessage
-# pyright: reportMissingImports=false, reportUnknownVariableType=false
-from langgraph.graph.message import add_messages
 
+# pyright: reportMissingImports=false, reportUnknownVariableType=false, reportMissingTypeStubs=false
+from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
 
 # ── 控制常量 ──────────────────────────────────────────
@@ -30,6 +30,7 @@ MAX_NEW_TODOS_PER_EVAL: int = 2
 
 # ── 数据模型 ──────────────────────────────────────────
 
+
 class TodoItem(BaseModel):
     """Agent 任务列表中的单个任务。
 
@@ -46,6 +47,7 @@ class TodoItem(BaseModel):
     status: Literal["pending", "in_progress", "done", "skipped"] = "pending"
     conclusion: str = ""
     added_by: Literal["plan", "evaluate"] = "plan"
+
 
 class AgentState(BaseModel):
     """公告查询 Agent 的共享状态。
@@ -67,13 +69,9 @@ class AgentState(BaseModel):
     todos: list[TodoItem] = Field(default_factory=list)
 
     # 流转数据
-    messages: Annotated[list[AnyMessage], add_messages] = Field(
-        default_factory=list
-    )
+    messages: Annotated[list[AnyMessage], add_messages] = Field(default_factory=list)
     notes: str = ""
-    announcements_seen: Annotated[list[str], operator.add] = Field(
-        default_factory=list
-    )
+    announcements_seen: Annotated[list[str], operator.add] = Field(default_factory=list)
 
     # 控制
     iteration: int = 0
