@@ -77,7 +77,7 @@ class TestSearchAnnouncements:
 
     @pytest.mark.asyncio
     async def test_search_with_date_range(self):
-        """Given: date_range = "2026-01-01~2026-03-31"
+        """Given: start_date="2026-01-01", end_date="2026-03-31"
         When: 调用 search_announcements
         Then: CninfoClient.search 收到正确的 start/end date"""
         with patch(
@@ -92,7 +92,8 @@ class TestSearchAnnouncements:
                 {
                     "keyword": "年报",
                     "stock_code": "600519",
-                    "date_range": "2026-01-01~2026-03-31",
+                    "start_date": "2026-01-01",
+                    "end_date": "2026-03-31",
                 }
             )
             mock_client.search.assert_called_once_with(

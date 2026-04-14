@@ -26,9 +26,13 @@ class SearchInput(BaseModel):
         default=None,
         description="公告类型筛选列表，传入 None 则不限类型",
     )
-    date_range: str = Field(
-        default="",
-        description="日期范围，格式 YYYY-MM-DD~YYYY-MM-DD，空则近一年",
+    start_date: date | None = Field(
+        default=None,
+        description="开始日期，格式 YYYY-MM-DD，不填则默认近一年",
+    )
+    end_date: date | None = Field(
+        default=None,
+        description="结束日期，格式 YYYY-MM-DD，不填则默认今天",
     )
     page: int = Field(default=1, description="页码，每页 30 条")
 

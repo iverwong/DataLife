@@ -60,21 +60,6 @@ def _resolve(announcement_id: str) -> AnnouncementInfo:
     return _registry[announcement_id]
 
 
-def _parse_date_range(
-    date_range: str,
-) -> tuple[date | None, date | None]:
-    """解析日期范围字符串 'YYYY-MM-DD~YYYY-MM-DD'。
-
-    空字符串返回 (None, None)。
-    """
-    if not date_range:
-        return None, None
-    parts = date_range.split("~")
-    if len(parts) != 2:
-        return None, None
-    start = date.fromisoformat(parts[0].strip())
-    end = date.fromisoformat(parts[1].strip())
-    return start, end
 
 
 def _format_search_results(
@@ -165,11 +150,11 @@ async def search_announcements(
     keyword: str,
     stock_code: str,
     category: list[str] | None = None,
-    date_range: str = "",
+    start_date: date | None = None,
+    end_date: date | None = None,
     page: int = 1,
 ) -> str:
     """搜索上市公司公告列表，每页 30 条，返回当页结果和总条数。"""
-    start_date, end_date = _parse_date_range(date_range)
     resolved_category = _resolve_category(category)
     results, total = await _get_client().search(
         stock_code,
