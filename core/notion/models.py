@@ -16,7 +16,6 @@ from typing import Annotated, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag
 
-
 # ============================================================
 # 共享引用对象
 # ============================================================
@@ -686,8 +685,8 @@ class CompoundFilter(BaseModel):
     """复合过滤条件（and / or）"""
 
     model_config: ClassVar[ConfigDict] = ConfigDict(populate_by_name=True)
-    and_: list[Filter] | None = Field(default=None, alias="and")
-    or_: list[Filter] | None = Field(default=None, alias="or")
+    and_: list["Filter"] | None = Field(default=None, alias="and")
+    or_: list["Filter"] | None = Field(default=None, alias="or")
 
 
 Filter = PropertyFilter | TimestampFilter | CompoundFilter

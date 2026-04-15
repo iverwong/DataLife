@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import cast
 
 import pymupdf
+import pymupdf.layout  # pyright: ignore[reportUnusedImport]
 import pymupdf4llm  # pyright: ignore[reportMissingTypeStubs]
 
 from core.tools.services.cninfo_client import CninfoClient
@@ -35,7 +36,7 @@ class AnnouncementCache:
 
     def _get_cache_path(self, announcement_id: str) -> Path:
         """获取公告缓存文件路径。"""
-        return self._cache_dir / f"{announcement_id}.txt"
+        return self._cache_dir / f"{announcement_id}.md"
 
     async def ensure_cached(self, announcement_id: str, pdf_url: str) -> Path:
         """确保公告全文已缓存，返回文件路径。
@@ -59,7 +60,10 @@ class AnnouncementCache:
     def _parse_pdf_to_text(pdf_bytes: bytes) -> str:
         """使用 PyMuPDF4LLM 将 PDF 转为 Markdown 文本。"""
         doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
-        result = cast(str, pymupdf4llm.to_markdown(doc=doc))  # pyright: ignore[reportUnknownMemberType]
+        result = cast(
+            str,
+            pymupdf4llm.to_markdown(doc=doc, use_ocr=False, page_chunks=False),  # pyright: ignore[reportUnknownMemberType]
+        )
         return result
 
     def grep(

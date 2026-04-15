@@ -5,21 +5,30 @@
                                       └── "有 pending" ────┘
 """
 
-from typing import Any, cast
+from typing import Generic, TypedDict, TypeVar, cast
 
 from langchain_core.language_models import BaseChatModel
+from langchain_core.language_models.base import LanguageModelInput
 from langchain_core.messages import (
-    AIMessage, AnyMessage, HumanMessage, SystemMessage, ToolMessage,
+    AIMessage,
+    AnyMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolCall,
+    ToolMessage,
 )
-from langgraph.graph import (
+from langchain_core.runnables.base import Runnable
+from langchain_core.tools import BaseTool
+from langgraph.graph import (  # pyright: ignore[reportMissingTypeStubs]
     END,
     START,
     StateGraph,
 )
-from langgraph.graph.state import (
+from langgraph.graph.state import (  # pyright: ignore[reportMissingTypeStubs]
     CompiledStateGraph,
 )
 from langgraph.types import Overwrite
+from pydantic import BaseModel
 
 from core.agents.base import (
     MAX_ITERATIONS,
@@ -30,16 +39,72 @@ from core.agents.base import (
     TodoItem,
 )
 from core.agents.prompts import (
-    EVALUATE_SYSTEM_PROMPT, PLAN_SYSTEM_PROMPT,
-    RESEARCH_SYSTEM_PROMPT, SYNTHESIZE_SYSTEM_PROMPT,
+    EVALUATE_SYSTEM_PROMPT,
+    PLAN_SYSTEM_PROMPT,
+    RESEARCH_SYSTEM_PROMPT,
+    SYNTHESIZE_SYSTEM_PROMPT,
 )
 from core.agents.schemas import EvaluateOutput, PlanOutput
-from core.tools import ANNOUNCEMENT_TOOLS
+from core.tools import ANNOUNCEMENT_TOOLS, grep_announcement, read_announcement
+
+# 追踪公告 ID 的工具名称集合（通过 .name 引用，确保重构时不会丢失逻辑）
+_ID_TRACKING_TOOL_NAMES = frozenset[str](
+    {grep_announcement.name, read_announcement.name}
+)
+
+# ── 类型定义 ─────────────────────────────────────────
+
+_SchemaT = TypeVar("_SchemaT", bound=BaseModel)
+
+
+class StructuredOutput(TypedDict, Generic[_SchemaT]):
+    """LLM 结构化输出的包装类型。
+
+    对应 ``with_structured_output(include_raw=True)`` 的返回结构。
+    """
+
+    raw: AIMessage
+    parsed: _SchemaT
+    parsing_error: Exception | None
+
+
+class PlanUpdate(TypedDict):
+    """plan 节点的状态更新。"""
+
+    todos: list[TodoItem]
+    total_tokens: int
+
+
+class ResearchUpdate(TypedDict, total=False):
+    """research 节点的状态更新（所有字段均可选，无 pending 时返回空 dict）。"""
+
+    todos: list[TodoItem]
+    messages: list[AnyMessage]
+    announcements_seen: list[str]
+    total_tokens: int
+
+
+class EvaluateUpdate(TypedDict):
+    """evaluate 节点的状态更新。"""
+
+    todos: list[TodoItem]
+    notes: str
+    messages: Overwrite
+    iteration: int
+    total_tokens: int
+
+
+class SynthesizeUpdate(TypedDict):
+    """synthesize 节点的状态更新。"""
+
+    notes: str
+    total_tokens: int
+
 
 # ── 节点逻辑函数 ─────────────────────────────────────
 
 
-async def plan(state: AgentState, model: BaseChatModel) -> dict[str, Any]:
+async def plan(state: AgentState, model: BaseChatModel) -> PlanUpdate:
     """规划节点：分析用户问题，拆解为 3~5 个初始 todo。
 
     只在首轮执行一次，不参与后续循环。
@@ -62,9 +127,9 @@ async def plan(state: AgentState, model: BaseChatModel) -> dict[str, Any]:
 
 async def research(
     state: AgentState,
-    model_with_tools: BaseChatModel,
-    tools: list[Any],
-) -> dict[str, Any]:
+    model_with_tools: Runnable[LanguageModelInput, AIMessage],
+    tools: list[BaseTool],
+) -> ResearchUpdate:
     """执行节点：取第一个 pending todo，通过手动 ReAct 循环执行。
 
     内部循环：构建 prompt → LLM 决定调用 tool → 执行 tool →
@@ -97,7 +162,7 @@ async def research(
     }
 
 
-async def evaluate(state: AgentState, model: BaseChatModel) -> dict[str, Any]:
+async def evaluate(state: AgentState, model: BaseChatModel) -> EvaluateUpdate:
     """评估节点：提炼本轮笔记，审视 todo 列表，可追加新 todo。
 
     核心节点，是循环的判断点。每轮执行后：
@@ -116,7 +181,9 @@ async def evaluate(state: AgentState, model: BaseChatModel) -> dict[str, Any]:
         iteration, total_tokens。
     """
     messages = _build_evaluate_messages(state.messages, state.todos, state.notes)
-    result = await _invoke_structured(model, EvaluateOutput, messages)
+    result: StructuredOutput[EvaluateOutput] = await _invoke_structured(
+        model, EvaluateOutput, messages
+    )
     parsed: EvaluateOutput = result["parsed"]
     updated_todos = _apply_evaluate_output(state.todos, parsed)
     new_notes = (
@@ -133,7 +200,7 @@ async def evaluate(state: AgentState, model: BaseChatModel) -> dict[str, Any]:
     }
 
 
-async def synthesize(state: AgentState, model: BaseChatModel) -> dict[str, Any]:
+async def synthesize(state: AgentState, model: BaseChatModel) -> SynthesizeUpdate:
     """输出节点：基于 todos + notes 生成最终分析报告。
 
     Args:
@@ -146,7 +213,7 @@ async def synthesize(state: AgentState, model: BaseChatModel) -> dict[str, Any]:
     messages = _build_synthesize_messages(state.todos, state.notes)
     response: AIMessage = await model.ainvoke(messages)
     return {
-        "notes": str(response.content),
+        "notes": str(response.content),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
         "total_tokens": _extract_tokens(response),
     }
 
@@ -192,26 +259,26 @@ def build_announcement_analyst_graph(
         ``result = await graph.ainvoke({"question": "..."})``
     """
     tools = ANNOUNCEMENT_TOOLS
-    model_with_tools = model.bind_tools(tools)  # type: ignore[assignment]
+    model_with_tools: Runnable[LanguageModelInput, AIMessage] = model.bind_tools(tools)  # pyright: ignore[reportUnknownMemberType]
 
-    async def _plan(state: AgentState) -> dict[str, Any]:
+    async def _plan(state: AgentState) -> PlanUpdate:
         return await plan(state, model)
 
-    async def _research(state: AgentState) -> dict[str, Any]:
-        return await research(state, cast(BaseChatModel, model_with_tools), tools)
+    async def _research(state: AgentState) -> ResearchUpdate:
+        return await research(state, model_with_tools, tools)
 
-    async def _evaluate(state: AgentState) -> dict[str, Any]:
+    async def _evaluate(state: AgentState) -> EvaluateUpdate:
         return await evaluate(state, model)
 
-    async def _synthesize(state: AgentState) -> dict[str, Any]:
+    async def _synthesize(state: AgentState) -> SynthesizeUpdate:
         return await synthesize(state, model)
 
     graph = StateGraph(AgentState)
 
-    _ = graph.add_node("plan", _plan)
-    _ = graph.add_node("research", _research)
-    _ = graph.add_node("evaluate", _evaluate)
-    _ = graph.add_node("synthesize", _synthesize)
+    _ = graph.add_node("plan", _plan)  # pyright: ignore[reportUnknownMemberType]
+    _ = graph.add_node("research", _research)  # pyright: ignore[reportUnknownMemberType]
+    _ = graph.add_node("evaluate", _evaluate)  # pyright: ignore[reportUnknownMemberType]
+    _ = graph.add_node("synthesize", _synthesize)  # pyright: ignore[reportUnknownMemberType]
 
     _ = graph.add_edge(START, "plan")
     _ = graph.add_edge("plan", "research")
@@ -223,7 +290,7 @@ def build_announcement_analyst_graph(
     )
     _ = graph.add_edge("synthesize", END)
 
-    return graph.compile()
+    return graph.compile()  # pyright: ignore[reportUnknownMemberType]
 
 
 # ── 共享辅助 ─────────────────────────────────────────
@@ -231,16 +298,19 @@ def build_announcement_analyst_graph(
 
 async def _invoke_structured(
     model: BaseChatModel,
-    schema: type,
+    schema: type[_SchemaT],
     messages: list[AnyMessage],
-) -> dict[str, Any]:
+) -> StructuredOutput[_SchemaT]:
     """调用 LLM 并获取结构化输出 + 原始响应。
 
     使用 with_structured_output(include_raw=True)，返回：
     {"raw": AIMessage, "parsed": schema 实例, "parsing_error": Exception | None}
     """
-    llm_with_structured = model.with_structured_output(schema, include_raw=True)
-    return cast(dict[str, Any], await llm_with_structured.ainvoke(messages))
+    llm_with_structured = cast(
+        Runnable[LanguageModelInput, StructuredOutput[_SchemaT]],
+        model.with_structured_output(schema, include_raw=True),
+    )  # include_raw=True 返回为 Runnable[LanguageModelInput, StructuredOutput[_SchemaT]] 类型
+    return await llm_with_structured.ainvoke(messages)
 
 
 def _extract_tokens(response: AIMessage) -> int:
@@ -275,8 +345,7 @@ def _parse_plan_todos(parsed: PlanOutput) -> list[TodoItem]:
     每个 PlanTodo 映射为 TodoItem(task=..., context=..., added_by="plan")。
     """
     return [
-        TodoItem(task=t.task, context=t.context, added_by="plan")
-        for t in parsed.todos
+        TodoItem(task=t.task, context=t.context, added_by="plan") for t in parsed.todos
     ]
 
 
@@ -322,19 +391,17 @@ def _extract_conclusion(messages: list[AnyMessage]) -> str:
     若无 AIMessage，返回 '未能得出结论'。
     """
     for msg in reversed(messages):
-        if isinstance(msg, AIMessage) and msg.content:
-            return str(msg.content)
+        if isinstance(msg, AIMessage) and msg.content:  # pyright: ignore[reportUnknownMemberType]
+            return str(msg.content)  # pyright: ignore[reportUnknownArgumentType, reportUnknownMemberType]
     return "未能得出结论"
 
 
-def _mark_todo_done(
-    todos: list[TodoItem], idx: int, conclusion: str
-) -> list[TodoItem]:
+def _mark_todo_done(todos: list[TodoItem], idx: int, conclusion: str) -> list[TodoItem]:
     """标记指定索引的 todo 为 done，写入 conclusion。
 
     返回新的 todos 列表（不修改原列表）。
     """
-    updated = list(todos)
+    updated = list(todos)  # 浅拷贝
     updated[idx] = updated[idx].model_copy(
         update={"status": "done", "conclusion": conclusion}
     )
@@ -356,19 +423,19 @@ def _build_evaluate_messages(
     # 将消息列表转换为摘要文本
     msg_summary = _summarize_messages(messages)
 
-    todo_lines = []
+    todo_lines: list[str] = []
     for t in todos:
         status_str = f"[{t.status}]" if t.status != "pending" else "[pending]"
         conclusion_str = f"\n  结论：{t.conclusion}" if t.conclusion else ""
-        todo_lines.append(f"- {status_str} {t.task} (来源：{t.added_by}){conclusion_str}")
+        todo_lines.append(
+            f"- {status_str} {t.task} (来源：{t.added_by}){conclusion_str}"
+        )
 
     todo_text = "\n".join(todo_lines) if todo_lines else "（空）"
     notes_text = f"\n\n## 已有笔记\n{notes}" if notes else ""
 
     human_content = (
-        f"## 本轮对话摘要\n{msg_summary}\n\n"
-        f"## 任务列表\n{todo_text}\n"
-        f"{notes_text}"
+        f"## 本轮对话摘要\n{msg_summary}\n\n## 任务列表\n{todo_text}\n{notes_text}"
     )
 
     return [
@@ -381,35 +448,37 @@ def _summarize_messages(messages: list[AnyMessage]) -> str:
     """将消息列表汇总为可读文本供 evaluate 使用。"""
     if not messages:
         return "（无对话记录）"
-    lines = []
+    lines: list[str] = []
     for m in messages:
         if isinstance(m, HumanMessage):
-            content = str(m.content)
+            content = str(m.content)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
             lines.append(f"Human: {content[:300]}{'...' if len(content) > 300 else ''}")
         elif isinstance(m, AIMessage):
             if m.tool_calls:
                 calls_str = ", ".join(tc["name"] for tc in m.tool_calls)
                 lines.append(f"AI (调用工具: {calls_str})")
             else:
-                content = str(m.content)
-                lines.append(f"AI: {content[:200]}{'...' if len(content) > 200 else ''}")
+                content = str(m.content)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+                lines.append(
+                    f"AI: {content[:200]}{'...' if len(content) > 200 else ''}"
+                )
         elif isinstance(m, ToolMessage):
-            content = str(m.content)
-            lines.append(f"Tool[{m.tool_call_id}]: {content[:200]}{'...' if len(content) > 200 else ''}")
+            content = str(m.content)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+            lines.append(
+                f"Tool[{m.tool_call_id}]: {content[:200]}{'...' if len(content) > 200 else ''}"
+            )
     return "\n".join(lines)
 
 
 # ── synthesize 辅助 ──────────────────────────────────
 
 
-def _build_synthesize_messages(
-    todos: list[TodoItem], notes: str
-) -> list[AnyMessage]:
+def _build_synthesize_messages(todos: list[TodoItem], notes: str) -> list[AnyMessage]:
     """构建 synthesize 节点的 LLM 输入消息。
 
     包含 SystemMessage + HumanMessage（内含完整 todo 列表及结论、累积笔记）。
     """
-    todo_lines = []
+    todo_lines: list[str] = []
     for t in todos:
         conclusion_str = f"\n  结论：{t.conclusion}" if t.conclusion else ""
         todo_lines.append(
@@ -430,13 +499,13 @@ def _build_synthesize_messages(
 
 # ── research 复杂子函数 ──────────────────────────────
 
-MAX_REACT_STEPS: int = 15
+MAX_REACT_STEPS: int = 20
 """单次 research 的 ReAct 循环最大步数。"""
 
 
 async def _react_loop(
-    model_with_tools: BaseChatModel,
-    tools: list[Any],
+    model_with_tools: Runnable[LanguageModelInput, AIMessage],
+    tools: list[BaseTool],
     context: str,
 ) -> tuple[list[AnyMessage], list[str], int]:
     """手动 ReAct 循环：LLM → tool_calls → execute → repeat。
@@ -449,7 +518,7 @@ async def _react_loop(
     Returns:
         (收集的 AI/Tool 消息列表, 新发现的 announcement_id 列表, 累计 token 数)
     """
-    tool_map: dict[str, Any] = {t.name: t for t in tools}
+    tool_map: dict[str, BaseTool] = {t.name: t for t in tools}
     conversation: list[AnyMessage] = [
         SystemMessage(content=RESEARCH_SYSTEM_PROMPT),
         HumanMessage(content=context),
@@ -459,7 +528,7 @@ async def _react_loop(
     total_tokens: int = 0
 
     for _ in range(MAX_REACT_STEPS):
-        response: AIMessage = await model_with_tools.ainvoke(conversation)
+        response = await model_with_tools.ainvoke(conversation)
         collected.append(response)
         conversation.append(response)
         total_tokens += _extract_tokens(response)
@@ -472,16 +541,14 @@ async def _react_loop(
         )
         collected.extend(tool_messages)
         conversation.extend(tool_messages)
-        new_seen.extend(
-            aid for aid in seen_ids if aid not in new_seen
-        )
+        new_seen.extend(aid for aid in seen_ids if aid not in new_seen)
 
     return collected, new_seen, total_tokens
 
 
 async def _execute_tool_calls(
-    tool_calls: list[Any],
-    tool_map: dict[str, Any],
+    tool_calls: list[ToolCall],
+    tool_map: dict[str, BaseTool],
 ) -> tuple[list[ToolMessage], list[str]]:
     """执行一批 tool call，返回 ToolMessage 列表和新发现的 announcement_id。
 
@@ -506,15 +573,13 @@ async def _execute_tool_calls(
             )
             continue
         try:
-            result = await tool.ainvoke(tc["args"])
+            result = await tool.ainvoke(tc["args"])  # pyright: ignore[reportUnknownMemberType, reportAny]
         except Exception as e:
             result = f"工具执行出错: {e}"
-        tool_messages.append(
-            ToolMessage(content=str(result), tool_call_id=tc["id"])
-        )
+        tool_messages.append(ToolMessage(content=str(result), tool_call_id=tc["id"]))
         # 追踪已查看的公告 ID
-        if tc["name"] in ("grep_announcement", "read_announcement"):
-            ann_id = tc["args"].get("announcement_id")
+        if tc["name"] in _ID_TRACKING_TOOL_NAMES:
+            ann_id: str | None = tc["args"].get("announcement_id")
             if ann_id and ann_id not in seen_ids:
                 seen_ids.append(ann_id)
 
@@ -541,7 +606,7 @@ def _apply_evaluate_output(
     Returns:
         更新后的 todo 列表（新列表，不修改原列表）。
     """
-    updated = list(todos)
+    updated = list(todos)  # 浅拷贝
 
     # 1. 标记 skipped
     skip_tasks = {s.task: s.reason for s in output.todos_to_skip}
@@ -557,7 +622,7 @@ def _apply_evaluate_output(
     # 2. 新增 todo（受上限约束）
     new_todos = output.new_todos[:MAX_NEW_TODOS_PER_EVAL]
     remaining_capacity = MAX_TODOS - len(updated)
-    for nt in new_todos[:max(0, remaining_capacity)]:
+    for nt in new_todos[: max(0, remaining_capacity)]:
         updated.append(
             TodoItem(
                 task=nt.task,

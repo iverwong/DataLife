@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from core.agents.base import MAX_NEW_TODOS_PER_EVAL
+
 
 class PlanTodo(BaseModel):
     """plan 节点输出的单个调研任务。"""
@@ -19,7 +21,7 @@ class PlanOutput(BaseModel):
     """plan 节点的结构化输出。"""
 
     todos: list[PlanTodo] = Field(
-        description="拆解出的 3~5 个调研任务列表",
+        description="拆解出的 1~8 个调研任务列表",
         min_length=1,
         max_length=8,
     )
@@ -42,13 +44,11 @@ class EvaluateSkipTodo(BaseModel):
 class EvaluateOutput(BaseModel):
     """evaluate 节点的结构化输出。"""
 
-    notes_update: str = Field(
-        description="本轮新发现的要点摘要，将追加到已有笔记中"
-    )
+    notes_update: str = Field(description="本轮新发现的要点摘要，将追加到已有笔记中")
     new_todos: list[EvaluateNewTodo] = Field(
         default_factory=list,
-        description="需要补充的新调研任务（最多 2 个）",
-        max_length=2,
+        description=f"需要补充的新调研任务（最多 {MAX_NEW_TODOS_PER_EVAL} 个）",
+        max_length=MAX_NEW_TODOS_PER_EVAL,
     )
     todos_to_skip: list[EvaluateSkipTodo] = Field(
         default_factory=list,
