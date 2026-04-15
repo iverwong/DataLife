@@ -19,6 +19,48 @@ from core.tools.services.types import (
     SearchInput,
 )
 
+
+# ── 数据结构───────────────────────────────────────────────────────────────
+
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class _MergedInterval:
+    """合并后的上下文区间。
+
+    Attributes:
+        start_line: 区间起始行号（含，从 1 开始）。
+        end_line:   区间结束行号（含，从 1 开始）。
+        match_lines: 区间内所有命中行号的集合。
+        lines:       区间内所有行的文本内容（按顺序）。
+    """
+
+    start_line: int
+    end_line: int
+    match_lines: frozenset[int]
+    lines: tuple[str, ...]
+
+
+def _build_merged_intervals(
+    matches: list[GrepMatch],
+    before: int,
+    after: int,
+    all_lines: list[str],
+) -> list[_MergedInterval]:
+    """将命中行及其上下文合并为不重叠的连续区间。
+
+    Args:
+        matches:   grep 返回的原始命中列表（已按行号升序排列）。
+        before:    每条命中前置上下文行数。
+        after:     每条命中后置上下文行数。
+        all_lines: 公告全文按行分割的列表（0-indexed）。
+    Returns:
+        按顺序排列的合并区间列表。
+    """
+    raise NotImplementedError
+
 # ── 模块级单例（lazy init，避免 import 时 NotImplementedError）─────
 
 _client: CninfoClient | None = None
@@ -84,26 +126,24 @@ def _format_search_results(
 def _format_grep_results(
     matches: list[GrepMatch],
     total_lines: int,
+    total_matches: int,
     head_limit: int,
+    before: int,
+    after: int,
+    all_lines: list[str],
 ) -> str:
-    """将 grep 结果格式化为 LLM 可读文本。"""
-    if not matches:
-        return "未找到匹配内容"
-    parts: list[str] = []
-    for m in matches:
-        ctx_before = "\n".join(f"  {c}" for c in m.context_before)
-        ctx_after = "\n".join(f"  {c}" for c in m.context_after)
-        parts.append(
-            f"--- Line {m.line_number} ---\n"
-            + f"{ctx_before}\n"
-            + f">>> {m.content} <<<\n"
-            + f"{ctx_after}"
-        )
-    body = "\n\n".join(parts)
-    truncated = ""
-    if len(matches) >= head_limit:
-        truncated = f"\n\n（仅显示前 {head_limit} 条匹配结果）"
-    return f"{body}\n\n（全文共 {total_lines} 行）{truncated}"
+    """将 grep 结果格式化为 LLM 可读文本（支持区间合并与行号标注）。
+
+    Args:
+        matches:       本次格式化的命中列表（已按 head_limit 截断）。
+        total_lines:   公告全文总行数。
+        total_matches: grep 的全部命中数（截断前）。
+        head_limit:    本次展示的上限。
+        before:        命中前上下文行数（用于区间合并）。
+        after:         命中后上下文行数（用于区间合并）。
+        all_lines:     公告全文行列表（用于区间合并时补全行内容）。
+    """
+    raise NotImplementedError
 
 
 # 用户友好名称 → 巨潮 API category 代码
@@ -192,7 +232,19 @@ async def grep_announcement(
         after_context=after_context,
     )
     total_lines = _get_cache().get_total_lines(info.announcement_id)
-    return _format_grep_results(matches[:head_limit], total_lines, head_limit)
+    total_matches = len(matches)
+    before = before_context if before_context is not None else context_lines
+    after = after_context if after_context is not None else context_lines
+    all_lines: list[str] = []  # TODO: 从缓存获取全文
+    return _format_grep_results(
+        matches[:head_limit],
+        total_lines,
+        total_matches,
+        head_limit,
+        before,
+        after,
+        all_lines,
+    )
 
 
 @tool(args_schema=ReadInput)
