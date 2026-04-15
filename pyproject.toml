@@ -10,8 +10,6 @@ dependencies = [
 	"pydantic==2.12.5",
 	"httpx==0.28.1",
 	"SQLAlchemy==2.0.48",
-	"aiosqlite==0.22.1",
-	"notion-client==2.7.0",
 	"python-dotenv==1.2.1",
 	"langchain-core>=0.3.0",
 	"langgraph>=1.0.0",
