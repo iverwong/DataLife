@@ -51,9 +51,6 @@ Thumbs.db
 .env
 .dev.env
 
-# qoder archive
-.qoder/
-
 # ruff cache
 /.ruff_cache/
 
@@ -62,3 +59,6 @@ Thumbs.db
 
 # rope
 /.ropeproject/
+
+# plans
+/.claude/plans/
