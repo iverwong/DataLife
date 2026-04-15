@@ -44,7 +44,7 @@ class GrepInput(BaseModel):
     context_lines: int = Field(default=3, description="上下文行数，前后对称")
     before_context: int | None = Field(default=None, description="匹配前行数，覆盖 context_lines")
     after_context: int | None = Field(default=None, description="匹配后行数，覆盖 context_lines")
-    head_limit: int = Field(default=50, description="限制返回的匹配数量")
+    head_limit: int = Field(default=30, description="限制返回的匹配数量")
 
 class ReadInput(BaseModel):
     """读取公告全文的输入参数。"""
