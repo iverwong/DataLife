@@ -20,7 +20,7 @@ SAMPLE_PDF_BYTES = b"%PDF-1.4 mock pdf content"
 
 def _make_cache_file(cache_dir: Path, announcement_id: str, content: str) -> Path:
     """在 cache_dir 下创建公告缓存文件，返回文件路径。"""
-    path = cache_dir / f"{announcement_id}.txt"
+    path = cache_dir / f"{announcement_id}.md"
     _ = path.write_text(content, encoding="utf-8")
     return path
 
@@ -44,14 +44,14 @@ class TestEnsureCached:
 
         result = await cache.ensure_cached(ann_id, "https://example.com/file.pdf")
 
-        assert result == tmp_path / f"{ann_id}.txt"
+        assert result == tmp_path / f"{ann_id}.md"
         mock_client.download_pdf.assert_not_called()  # pyright: ignore[reportAny]
 
     @pytest.mark.asyncio
     async def test_download_and_cache(self, tmp_path: Path) -> None:
         """Given: 缓存文件不存在
         When: 调用 ensure_cached
-        Then: 调用 download_pdf → _parse_pdf_to_text → 写入 .txt"""
+        Then: 调用 download_pdf → _parse_pdf_to_text → 写入 .md"""
         mock_client = MagicMock(spec=CninfoClient)
         mock_client.download_pdf = AsyncMock(return_value=SAMPLE_PDF_BYTES)
         cache = AnnouncementCache(client=mock_client, cache_dir=tmp_path)
@@ -66,7 +66,7 @@ class TestEnsureCached:
         ):
             result = await cache.ensure_cached(ann_id, pdf_url)
 
-        assert result == tmp_path / f"{ann_id}.txt"
+        assert result == tmp_path / f"{ann_id}.md"
         assert result.exists()
         assert result.read_text(encoding="utf-8") == "# Markdown content\nLine two"
         mock_client.download_pdf.assert_awaited_once_with(pdf_url)  # pyright: ignore[reportAny]
@@ -264,7 +264,7 @@ class TestParsePdfToText:
             result = AnnouncementCache._parse_pdf_to_text(SAMPLE_PDF_BYTES)  # pyright: ignore[reportPrivateUsage]
 
             mock_open.assert_called_once_with(stream=SAMPLE_PDF_BYTES, filetype="pdf")
-            mock_to_markdown.assert_called_once_with(doc=mock_doc)
+            mock_to_markdown.assert_called_once_with(doc=mock_doc, use_ocr=False, page_chunks=False)
             assert result == "# Header\n\nSome content here"
             assert len(result) > 0
 
