@@ -11,6 +11,7 @@ ANNOUNCEMENT_TOOLS = [
     grep_announcement,
     read_announcement,
 ]
+"公告相关工具集合"
 
 __all__ = [
     "search_announcements",

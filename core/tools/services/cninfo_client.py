@@ -17,6 +17,7 @@ CNINFO_STOCK_URL = "http://www.cninfo.com.cn/new/data/szse_stock.json"
 # 模块级缓存：股票代码 → 机构 ID 映射
 _stock_org_cache: dict[str, str] | None = None
 
+
 def _convert_item(item: AnnouncementItem) -> AnnouncementInfo:
     """将 API 原始条目转为 AnnouncementInfo。"""
     return AnnouncementInfo(
@@ -24,19 +25,16 @@ def _convert_item(item: AnnouncementItem) -> AnnouncementInfo:
         stock_code=item.secCode,
         stock_name=item.secName,
         title=f"{item.secName}({item.secCode})-{item.announcementTitle}",
-        published_date=datetime.fromtimestamp(
-            item.announcementTime / 1000
-        ).date(),
+        published_date=datetime.fromtimestamp(item.announcementTime / 1000).date(),
         pdf_url=f"{CNINFO_BASE_URL}{item.adjunctUrl}",
         size_kb=item.adjunctSize,
     )
 
+
 class CninfoClient:
     _external_client: httpx.AsyncClient | None
 
-    def __init__(
-        self, client: httpx.AsyncClient | None = None
-    ) -> None:
+    def __init__(self, client: httpx.AsyncClient | None = None) -> None:
         self._external_client = client
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -53,6 +51,7 @@ class CninfoClient:
         end_date: date | None = None,
         page: int = 1,
     ) -> tuple[list[AnnouncementInfo], int]:
+        # TODO 整体考虑下港股的情况（目前都是依靠A股构建的）
         if not stock_code:
             logfire.warn("股票代码为空，跳过搜索")
             return [], 0
@@ -61,13 +60,14 @@ class CninfoClient:
         _start = start_date or (today - timedelta(days=365))
         _end = end_date or (today + timedelta(days=1))
 
+        # TODO 这里的 org_mapping 考虑下缓存
         org_map = await self._get_stock_org_mapping()
         org_id = org_map.get(stock_code, "")
         stock_item = f"{stock_code},{org_id}"
 
         logfire.info(
-            "搜索公告: stock={stock}, keyword={kw}, " +
-            "category={cat}, range={s}~{e}, page={p}",
+            "搜索公告: stock={stock}, keyword={kw}, "
+            + "category={cat}, range={s}~{e}, page={p}",
             stock=stock_code,
             kw=keyword,
             cat=category,
@@ -77,14 +77,19 @@ class CninfoClient:
         )
 
         raw_items, total = await self._fetch_page(
-            stock_item, keyword, category,
-            _start, _end, page,
+            stock_item,
+            keyword,
+            category,
+            _start,
+            _end,
+            page,
         )
 
         result = [_convert_item(item) for item in raw_items]
         logfire.info(
             "公告搜索完成: 当页 {count} 条，总 {total} 条",
-            count=len(result), total=total,
+            count=len(result),
+            total=total,
         )
         return result, total
 
@@ -105,16 +110,9 @@ class CninfoClient:
 
         client = await self._get_client()
         try:
-            response = await client.get(
-                CNINFO_STOCK_URL, timeout=30.0
-            )
-            stock_data = StockListResponse.model_validate(
-                response.json()
-            )
-            _stock_org_cache = {
-                s.code: s.orgId
-                for s in stock_data.stockList
-            }
+            response = await client.get(CNINFO_STOCK_URL, timeout=30.0)
+            stock_data = StockListResponse.model_validate(response.json())
+            _stock_org_cache = {s.code: s.orgId for s in stock_data.stockList}
             return _stock_org_cache
         finally:
             if self._external_client is None:
@@ -148,18 +146,14 @@ class CninfoClient:
 
         client = await self._get_client()
         try:
-            res = await client.post(
-                CNINFO_QUERY_URL, params=payload
-            )
+            res = await client.post(CNINFO_QUERY_URL, params=payload)
             try:
                 _ = res.raise_for_status()
             except httpx.HTTPStatusError:
                 logfire.exception("获取公告请求失败")
                 return [], 0
 
-            resp = AnnouncementsResponse.model_validate(
-                res.json()
-            )
+            resp = AnnouncementsResponse.model_validate(res.json())
             total = resp.totalAnnouncement
             items = list(resp.announcements or [])
             return items, total

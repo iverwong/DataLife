@@ -12,6 +12,7 @@ from core.tools.services.announcement_cache import AnnouncementCache
 from core.tools.services.cninfo_client import CninfoClient
 from core.tools.services.types import (
     AnnouncementInfo,
+    CategoryName,
     GrepInput,
     GrepMatch,
     ReadInput,
@@ -58,8 +59,6 @@ def _resolve(announcement_id: str) -> AnnouncementInfo:
             f"公告 {announcement_id} 未找到，请先使用 search_announcements 搜索"
         )
     return _registry[announcement_id]
-
-
 
 
 def _format_search_results(
@@ -138,7 +137,7 @@ CATEGORY_MAP: dict[str, str] = {
 }
 
 
-def _resolve_category(category: list[str] | None) -> str:
+def _resolve_category(category: list[CategoryName] | None) -> str:
     """将用户友好的公告类型列表映射为巨潮 API category 参数。"""
     if not category:
         return ""
@@ -149,7 +148,7 @@ def _resolve_category(category: list[str] | None) -> str:
 async def search_announcements(
     keyword: str,
     stock_code: str,
-    category: list[str] | None = None,
+    category: list[CategoryName] | None = None,
     start_date: date | None = None,
     end_date: date | None = None,
     page: int = 1,

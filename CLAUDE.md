@@ -15,7 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Python版本： 3.13.3
 
 ## 代码规范
-- 完整 type hints，用 `basedpyright` 检查
+- 完整 type hints，用 `basedpyright` 检查（不包含 `tests/` 目录下的测试代码）
 - 无需使用 `from __future__ import annotations`，该行为为默认行为
 - Google 风格 docstring
 - PEP 8，行宽 120
