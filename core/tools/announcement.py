@@ -59,7 +59,47 @@ def _build_merged_intervals(
     Returns:
         按顺序排列的合并区间列表。
     """
-    raise NotImplementedError
+    if not matches:
+        return []
+
+    total = len(all_lines)
+
+    # 计算每条命中的裸区间 [start, end]（1-indexed，含）
+    raw: list[tuple[int, int, int]] = []  # (start, end, match_line)
+    for m in matches:
+        s = max(1, m.line_number - before)
+        e = min(total, m.line_number + after)
+        raw.append((s, e, m.line_number))
+
+    # 按 start 排序后合并相邻/重叠区间
+    raw.sort(key=lambda x: x[0])
+    merged_ranges: list[tuple[int, int, list[int]]] = []
+    cur_s, cur_e, cur_matches = raw[0]
+    cur_match_lines: list[int] = [cur_matches]
+
+    for s, e, ml in raw[1:]:
+        if s <= cur_e + 1:  # 重叠或相邻
+            cur_e = max(cur_e, e)
+            cur_match_lines.append(ml)
+        else:
+            merged_ranges.append((cur_s, cur_e, cur_match_lines))
+            cur_s, cur_e = s, e
+            cur_match_lines = [ml]
+    merged_ranges.append((cur_s, cur_e, cur_match_lines))
+
+    # 构建 _MergedInterval，从 all_lines 切取实际文本
+    result: list[_MergedInterval] = []
+    for s, e, mls in merged_ranges:
+        interval_lines = tuple(all_lines[s - 1 : e])  # 0-indexed 切片
+        result.append(
+            _MergedInterval(
+                start_line=s,
+                end_line=e,
+                match_lines=frozenset(mls),
+                lines=interval_lines,
+            )
+        )
+    return result
 
 # ── 模块级单例（lazy init，避免 import 时 NotImplementedError）─────
 
