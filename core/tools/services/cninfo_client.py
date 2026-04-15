@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta
 import httpx
 import logfire
 
-from core.data.api_models import (
+from core.tools.services.cninfo_api_models import (
     AnnouncementItem,
     AnnouncementsResponse,
     StockListResponse,

@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from core.data.api_models import AnnouncementItem
+from core.tools.services.cninfo_api_models import AnnouncementItem
 from core.tools.services.cninfo_client import CninfoClient
 from core.tools.services.types import AnnouncementInfo
 

@@ -109,12 +109,10 @@ async def init_db() -> None:
 
     通过 Base.metadata.create_all 异步建表，替代现有各模块分散的手写 SQL 建表。
     使用 DEFAULT_DB_PATH 作为数据库路径，测试环境通过 configure_for_testing() 注入。
-    """
-    from core.db.models import Base
 
-    engine = get_engine()
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    注意：ORM 模型已迁移至独立服务层，此函数暂时保留为空操作。
+    """
+    pass
 
 
 async def dispose_engine() -> None:
