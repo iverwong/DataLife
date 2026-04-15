@@ -252,3 +252,48 @@ class TestCninfoClientDownload:
                 _ = await client.download_pdf(
                     "https://static.cninfo.com.cn/finalpage/slow.pdf"
                 )
+
+
+class TestSearchOptionalParams:
+    """CninfoClient.search 空参数搜索测试。
+
+    覆盖：stock_code 为空时不提前返回空列表，允许纯关键词/类型搜索。
+    外部依赖：httpx.AsyncClient mock，_get_stock_org_mapping mock。
+    """
+
+    @pytest.mark.asyncio
+    async def test_empty_stock_code_does_not_short_circuit(self) -> None:
+        """Given: stock_code 为空字符串，keyword 非空
+        When: 调用 search(stock_code="", keyword="年报")
+        Then: 不直接返回 []，而是发出 HTTP 请求（验证 _fetch_page 被调用）"""
+        client = CninfoClient()
+        mock_fetch = AsyncMock(return_value=([], 0))
+        mock_org = AsyncMock(return_value={})
+
+        with (
+            patch.object(client, "_fetch_page", mock_fetch),
+            patch.object(client, "_get_stock_org_mapping", mock_org),
+        ):
+            result, total = await client.search(stock_code="", keyword="年报")
+
+        mock_fetch.assert_awaited_once()  # 关键断言：不短路
+        assert result == []
+        assert total == 0
+
+    @pytest.mark.asyncio
+    async def test_empty_keyword_is_accepted(self) -> None:
+        """Given: keyword 为空字符串，stock_code 为有效代码
+        When: 调用 search(stock_code="600519", keyword="")
+        Then: 正常发出请求，不抛异常"""
+        client = CninfoClient()
+        mock_fetch = AsyncMock(return_value=([], 0))
+        mock_org = AsyncMock(return_value={"600519": "org_001"})
+
+        with (
+            patch.object(client, "_fetch_page", mock_fetch),
+            patch.object(client, "_get_stock_org_mapping", mock_org),
+        ):
+            result, total = await client.search(stock_code="600519", keyword="")
+
+        mock_fetch.assert_awaited_once()
+        assert isinstance(result, list)

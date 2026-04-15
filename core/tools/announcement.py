@@ -19,6 +19,88 @@ from core.tools.services.types import (
     SearchInput,
 )
 
+
+# ── 数据结构───────────────────────────────────────────────────────────────
+
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class _MergedInterval:
+    """合并后的上下文区间。
+
+    Attributes:
+        start_line: 区间起始行号（含，从 1 开始）。
+        end_line:   区间结束行号（含，从 1 开始）。
+        match_lines: 区间内所有命中行号的集合。
+        lines:       区间内所有行的文本内容（按顺序）。
+    """
+
+    start_line: int
+    end_line: int
+    match_lines: frozenset[int]
+    lines: tuple[str, ...]
+
+
+def _build_merged_intervals(
+    matches: list[GrepMatch],
+    before: int,
+    after: int,
+    all_lines: list[str],
+) -> list[_MergedInterval]:
+    """将命中行及其上下文合并为不重叠的连续区间。
+
+    Args:
+        matches:   grep 返回的原始命中列表（已按行号升序排列）。
+        before:    每条命中前置上下文行数。
+        after:     每条命中后置上下文行数。
+        all_lines: 公告全文按行分割的列表（0-indexed）。
+    Returns:
+        按顺序排列的合并区间列表。
+    """
+    if not matches:
+        return []
+
+    total = len(all_lines)
+
+    # 计算每条命中的裸区间 [start, end]（1-indexed，含）
+    raw: list[tuple[int, int, int]] = []  # (start, end, match_line)
+    for m in matches:
+        s = max(1, m.line_number - before)
+        e = min(total, m.line_number + after)
+        raw.append((s, e, m.line_number))
+
+    # 按 start 排序后合并相邻/重叠区间
+    raw.sort(key=lambda x: x[0])
+    merged_ranges: list[tuple[int, int, list[int]]] = []
+    cur_s, cur_e, cur_matches = raw[0]
+    cur_match_lines: list[int] = [cur_matches]
+
+    for s, e, ml in raw[1:]:
+        if s <= cur_e + 1:  # 重叠或相邻
+            cur_e = max(cur_e, e)
+            cur_match_lines.append(ml)
+        else:
+            merged_ranges.append((cur_s, cur_e, cur_match_lines))
+            cur_s, cur_e = s, e
+            cur_match_lines = [ml]
+    merged_ranges.append((cur_s, cur_e, cur_match_lines))
+
+    # 构建 _MergedInterval，从 all_lines 切取实际文本
+    result: list[_MergedInterval] = []
+    for s, e, mls in merged_ranges:
+        interval_lines = tuple(all_lines[s - 1 : e])  # 0-indexed 切片
+        result.append(
+            _MergedInterval(
+                start_line=s,
+                end_line=e,
+                match_lines=frozenset(mls),
+                lines=interval_lines,
+            )
+        )
+    return result
+
 # ── 模块级单例（lazy init，避免 import 时 NotImplementedError）─────
 
 _client: CninfoClient | None = None
@@ -84,26 +166,39 @@ def _format_search_results(
 def _format_grep_results(
     matches: list[GrepMatch],
     total_lines: int,
-    head_limit: int,
+    total_matches: int,
+    before: int,
+    after: int,
+    all_lines: list[str],
 ) -> str:
-    """将 grep 结果格式化为 LLM 可读文本。"""
+    """将 grep 结果格式化为 LLM 可读文本（支持区间合并与行号标注）。
+
+    Args:
+        matches:       本次格式化的命中列表（已按 head_limit 截断）。
+        total_lines:   公告全文总行数。
+        total_matches: grep 的全部命中数（截断前）。
+        before:        命中前上下文行数（用于区间合并）。
+        after:         命中后上下文行数（用于区间合并）。
+        all_lines:     公告全文行列表（用于区间合并时补全行内容）。
+    """
     if not matches:
         return "未找到匹配内容"
+
+    intervals = _build_merged_intervals(matches, before, after, all_lines)
     parts: list[str] = []
-    for m in matches:
-        ctx_before = "\n".join(f"  {c}" for c in m.context_before)
-        ctx_after = "\n".join(f"  {c}" for c in m.context_after)
-        parts.append(
-            f"--- Line {m.line_number} ---\n"
-            + f"{ctx_before}\n"
-            + f">>> {m.content} <<<\n"
-            + f"{ctx_after}"
-        )
+    for interval in intervals:
+        rows: list[str] = []
+        for i, line_text in enumerate(interval.lines):
+            ln = interval.start_line + i
+            prefix = ">>>" if ln in interval.match_lines else "   "
+            rows.append(f"{prefix} L{ln}: {line_text}")
+        parts.append("--- match ---\n" + "\n".join(rows))
+
     body = "\n\n".join(parts)
-    truncated = ""
-    if len(matches) >= head_limit:
-        truncated = f"\n\n（仅显示前 {head_limit} 条匹配结果）"
-    return f"{body}\n\n（全文共 {total_lines} 行）{truncated}"
+    summary = f"共 {total_matches} 条匹配"
+    if len(matches) < total_matches:
+        summary += f"，显示前 {len(matches)} 条"
+    return f"{summary}\n\n{body}\n\n（全文共 {total_lines} 行）"
 
 
 # 用户友好名称 → 巨潮 API category 代码
@@ -192,7 +287,18 @@ async def grep_announcement(
         after_context=after_context,
     )
     total_lines = _get_cache().get_total_lines(info.announcement_id)
-    return _format_grep_results(matches[:head_limit], total_lines, head_limit)
+    total_matches = len(matches)
+    before = before_context if before_context is not None else context_lines
+    after = after_context if after_context is not None else context_lines
+    all_lines = _get_cache().get_all_lines(info.announcement_id)
+    return _format_grep_results(
+        matches[:head_limit],
+        total_lines,
+        total_matches,
+        before,
+        after,
+        all_lines,
+    )
 
 
 @tool(args_schema=ReadInput)

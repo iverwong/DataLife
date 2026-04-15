@@ -20,8 +20,8 @@ CategoryName = Literal[
 
 class SearchInput(BaseModel):
     """搜索公告的输入参数。"""
-    keyword: str = Field(description="搜索关键词")
-    stock_code: str = Field(description="股票代码（如 600519）")
+    keyword: str = Field(default="", description="搜索关键词，不填则不限")
+    stock_code: str = Field(default="", description="股票代码（如 600519），不填则不限股票")
     category: list[CategoryName] | None = Field(
         default=None,
         description="公告类型筛选列表，传入 None 则不限类型",
@@ -44,13 +44,13 @@ class GrepInput(BaseModel):
     context_lines: int = Field(default=3, description="上下文行数，前后对称")
     before_context: int | None = Field(default=None, description="匹配前行数，覆盖 context_lines")
     after_context: int | None = Field(default=None, description="匹配后行数，覆盖 context_lines")
-    head_limit: int = Field(default=50, description="限制返回的匹配数量")
+    head_limit: int = Field(default=30, description="限制返回的匹配数量")
 
 class ReadInput(BaseModel):
     """读取公告全文的输入参数。"""
     announcement_id: str = Field(description="公告 ID")
     offset: int = Field(default=1, description="起始行号")
-    limit: int = Field(default=200, description="读取行数限制")
+    limit: int = Field(default=200, description="读取行数限制，最大 500")
 
 # ── 业务数据类 ─────────────────────────────────
 

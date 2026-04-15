@@ -51,11 +51,6 @@ class CninfoClient:
         end_date: date | None = None,
         page: int = 1,
     ) -> tuple[list[AnnouncementInfo], int]:
-        # TODO 整体考虑下港股的情况（目前都是依靠A股构建的）
-        if not stock_code:
-            logfire.warn("股票代码为空，跳过搜索")
-            return [], 0
-
         today = date.today()
         _start = start_date or (today - timedelta(days=365))
         _end = end_date or (today + timedelta(days=1))
