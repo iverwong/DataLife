@@ -134,6 +134,25 @@ class TestGrep:
             _ = cache.grep("nonexistent_id", "pattern")
 
 
+# ── TestGrepHeadLimitDefault ───────────────────────────────────────────────
+
+
+class TestGrepHeadLimitDefault:
+    """GrepInput head_limit 默认值测试。
+
+    覆盖：默认值已从 50 改为 30。
+    """
+
+    def test_head_limit_default_is_30(self) -> None:
+        """Given: 不指定 head_limit
+        When: 构造 GrepInput
+        Then: head_limit == 30"""
+        from core.tools.services.types import GrepInput
+
+        inp = GrepInput(announcement_id="ann_001", pattern="test")
+        assert inp.head_limit == 30
+
+
 # ── TestReadLines ──────────────────────────────────────────────────────────
 
 
@@ -187,6 +206,33 @@ class TestReadLines:
 
         with pytest.raises(FileNotFoundError):
             _ = cache.read_lines("nonexistent_id", offset=1, limit=10)
+
+
+# ── TestReadHardLimit ──────────────────────────────────────────────────────
+
+
+class TestReadHardLimit:
+    """read_lines 硬上限测试。
+
+    覆盖：limit 参数硬上限 500 行，防止 LLM 一次性读取整篇公告。
+    """
+
+    def test_hard_limit_caps_at_500(self, tmp_path: Path) -> None:
+        """Given: 缓存文件有 1000 行，调用方传入 limit=10000
+        When: 调用 read_lines(offset=1, limit=10000)
+        Then: 实际只返回前 500 行（硬上限截断）"""
+        mock_client = MagicMock(spec=CninfoClient)
+        cache = AnnouncementCache(client=mock_client, cache_dir=tmp_path)
+
+        ann_id = "ann_hard_limit"
+        lines = [f"line content {i}" for i in range(1, 1001)]
+        _ = _make_cache_file(tmp_path, ann_id, "\n".join(lines))
+
+        result = cache.read_lines(ann_id, offset=1, limit=10000)
+
+        assert "显示 1~500 行" in result
+        assert "L500:" in result
+        assert "L501:" not in result
 
 
 # ── TestParsePdfToText ─────────────────────────────────────────────────────

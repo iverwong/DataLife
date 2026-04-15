@@ -12,7 +12,155 @@ import pytest
 from core.tools.services.types import (
     AnnouncementInfo,
     GrepMatch,
+    SearchInput,
 )
+
+
+class TestFormatGrepResults:
+    """_format_grep_results 输出格式测试。
+
+    覆盖范围：总命中数提示、截断提示、行号标注、区间合并展示。
+    外部依赖：无（纯格式化逻辑）。
+    """
+
+    def _make_match(
+        self,
+        line_number: int,
+        content: str,
+        ctx_before: list[str],
+        ctx_after: list[str],
+    ) -> GrepMatch:
+        return GrepMatch(
+            line_number=line_number,
+            content=content,
+            context_before=ctx_before,
+            context_after=ctx_after,
+        )
+
+    def test_total_match_count_shown(self) -> None:
+        """Given: 全文共 5 条命中，head_limit=3，传入前 3 条
+        When: 调用 _format_grep_results
+        Then: 输出包含「共 5 条匹配」以及截断提示「显示前 3 条"""
+        from core.tools.announcement import _format_grep_results
+
+        all_lines = [f"line {i}" for i in range(1, 21)]
+        matches = [
+            self._make_match(
+                3, "line 3", ["line 1", "line 2"], ["line 4", "line 5"]
+            ),
+            self._make_match(
+                10, "line 10", ["line 8", "line 9"], ["line 11", "line 12"]
+            ),
+            self._make_match(
+                18, "line 18", ["line 16", "line 17"], ["line 19", "line 20"]
+            ),
+        ]
+        result = _format_grep_results(
+            matches=matches,
+            total_lines=20,
+            total_matches=5,
+            head_limit=3,
+            before=2,
+            after=2,
+            all_lines=all_lines,
+        )
+        assert "共 5 条匹配" in result
+        assert "显示前 3 条" in result
+
+    def test_no_truncation_message_when_all_shown(self) -> None:
+        """Given: 全文 2 条命中，head_limit=30，传入全部 2 条
+        When: 调用 _format_grep_results
+        Then: 包含「共 2 条匹配」，不含截断提示"""
+        from core.tools.announcement import _format_grep_results
+
+        all_lines = [f"line {i}" for i in range(1, 11)]
+        matches = [
+            self._make_match(2, "line 2", ["line 1"], ["line 3"]),
+            self._make_match(8, "line 8", ["line 7"], ["line 9"]),
+        ]
+        result = _format_grep_results(
+            matches=matches,
+            total_lines=10,
+            total_matches=2,
+            head_limit=30,
+            before=1,
+            after=1,
+            all_lines=all_lines,
+        )
+        assert "共 2 条匹配" in result
+        assert "显示前" not in result
+
+    def test_context_lines_have_line_numbers(self) -> None:
+        """Given: 1 条命中，前后各 1 行上下文
+        When: 调用 _format_grep_results
+        Then: 命中行和上下文行都以 L{n}: 格式标注行号"""
+        from core.tools.announcement import _format_grep_results
+
+        all_lines = ["ctx before", "matched line", "ctx after"]
+        matches = [
+            self._make_match(2, "matched line", ["ctx before"], ["ctx after"]),
+        ]
+        result = _format_grep_results(
+            matches=matches,
+            total_lines=3,
+            total_matches=1,
+            head_limit=30,
+            before=1,
+            after=1,
+            all_lines=all_lines,
+        )
+        assert "L1:" in result
+        assert "L2:" in result
+        assert "L3:" in result
+
+    def test_overlapping_contexts_merged(self) -> None:
+        """Given: 两条命中行号相邻（L3 和 L5），context_lines=3 时上下文重叠
+        When: 调用 _format_grep_results
+        Then: 输出为一个连续区间，不出现重复行，且两条命中都被标注"""
+        from core.tools.announcement import _format_grep_results
+
+        all_lines = [f"line {i}" for i in range(1, 11)]
+        matches = [
+            self._make_match(
+                3, "line 3", ["line 1", "line 2"], ["line 4", "line 5"]
+            ),
+            self._make_match(
+                5, "line 5", ["line 3", "line 4"], ["line 6", "line 7"]
+            ),
+        ]
+        result = _format_grep_results(
+            matches=matches,
+            total_lines=10,
+            total_matches=2,
+            head_limit=30,
+            before=2,
+            after=2,
+            all_lines=all_lines,
+        )
+        # 合并后只有一个区间分隔符
+        assert result.count("---") <= 2  # 最多 1 个区间块（2 个 ---）
+        # 每行只出现一次
+        assert result.count("L3:") == 1
+        assert result.count("L4:") == 1
+        assert result.count("L5:") == 1
+
+    def test_empty_matches(self) -> None:
+        """Given: 无命中
+        When: 调用 _format_grep_results
+        Then: 返回「未找到匹配内容」"""
+        from core.tools.announcement import _format_grep_results
+
+        result = _format_grep_results(
+            matches=[],
+            total_lines=100,
+            total_matches=0,
+            head_limit=30,
+            before=2,
+            after=2,
+            all_lines=[],
+        )
+        assert result == "未找到匹配内容"
+
 
 # ── Fixtures ─────────────────────────────────────────────
 
@@ -236,3 +384,32 @@ class TestReadAnnouncement:
                 }
             )
             assert "搜索" in result or "未找到" in result
+
+
+class TestSearchInputSchema:
+    """SearchInput schema 测试。
+
+    覆盖：keyword / stock_code 已改为可选（默认空字符串）。
+    """
+
+    def test_keyword_optional_defaults_to_empty(self) -> None:
+        """Given: 不传 keyword
+        When: 构造 SearchInput(stock_code="600519")
+        Then: keyword == """""
+        inp = SearchInput(stock_code="600519")
+        assert inp.keyword == ""
+
+    def test_stock_code_optional_defaults_to_empty(self) -> None:
+        """Given: 不传 stock_code
+        When: 构造 SearchInput(keyword="年报")
+        Then: stock_code == """""
+        inp = SearchInput(keyword="年报")
+        assert inp.stock_code == ""
+
+    def test_both_optional_construct_empty(self) -> None:
+        """Given: keyword 和 stock_code 均不传
+        When: 构造 SearchInput()
+        Then: 两者均为空字符串，不抛验证异常"""
+        inp = SearchInput()
+        assert inp.keyword == ""
+        assert inp.stock_code == ""
