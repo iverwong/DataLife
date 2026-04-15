@@ -132,11 +132,22 @@ class AnnouncementCache:
         )
         return header + body
 
-    def get_total_lines(self, announcement_id: str) -> int:
-        """获取已缓存公告的总行数。"""
+    def get_all_lines(self, announcement_id: str) -> list[str]:
+        """获取已缓存公告的所有行内容。
+
+        Returns:
+            公告所有行的列表。
+
+        Raises:
+            FileNotFoundError: 缓存文件不存在。
+        """
         path = self._get_cache_path(announcement_id)
         if not path.exists():
             raise FileNotFoundError(
                 f"公告 {announcement_id} 未缓存，请先调用 search_announcements"
             )
-        return len(path.read_text(encoding="utf-8").splitlines())
+        return path.read_text(encoding="utf-8").splitlines()
+
+    def get_total_lines(self, announcement_id: str) -> int:
+        """获取已缓存公告的总行数。"""
+        return len(self.get_all_lines(announcement_id))

@@ -59,7 +59,6 @@ class TestFormatGrepResults:
             matches=matches,
             total_lines=20,
             total_matches=5,
-            head_limit=3,
             before=2,
             after=2,
             all_lines=all_lines,
@@ -82,7 +81,6 @@ class TestFormatGrepResults:
             matches=matches,
             total_lines=10,
             total_matches=2,
-            head_limit=30,
             before=1,
             after=1,
             all_lines=all_lines,
@@ -104,7 +102,6 @@ class TestFormatGrepResults:
             matches=matches,
             total_lines=3,
             total_matches=1,
-            head_limit=30,
             before=1,
             after=1,
             all_lines=all_lines,
@@ -132,7 +129,6 @@ class TestFormatGrepResults:
             matches=matches,
             total_lines=10,
             total_matches=2,
-            head_limit=30,
             before=2,
             after=2,
             all_lines=all_lines,
@@ -154,7 +150,6 @@ class TestFormatGrepResults:
             matches=[],
             total_lines=100,
             total_matches=0,
-            head_limit=30,
             before=2,
             after=2,
             all_lines=[],
@@ -293,17 +288,15 @@ class TestGrepAnnouncement:
             mock_cache.get_total_lines = MagicMock(
                 return_value=500
             )
-            mock_path = MagicMock()
-            mock_path.read_text = MagicMock(
+            mock_cache.get_all_lines = MagicMock(
                 return_value=(
                     "line0\n" * 9
                     + "营业收入 1850 亿元\n"
                     + "line11\n" * 31
                     + "营业收入构成分析\n"
                     + "line43\n" * 458
-                )
+                ).splitlines()
             )
-            mock_cache._get_cache_path = MagicMock(return_value=mock_path)
             from core.tools.announcement import (
                 grep_announcement,
             )

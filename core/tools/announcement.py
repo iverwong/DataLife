@@ -167,7 +167,6 @@ def _format_grep_results(
     matches: list[GrepMatch],
     total_lines: int,
     total_matches: int,
-    head_limit: int,  # pyright: ignore[reportUnusedParameter]  # truncation happens at caller
     before: int,
     after: int,
     all_lines: list[str],
@@ -178,7 +177,6 @@ def _format_grep_results(
         matches:       本次格式化的命中列表（已按 head_limit 截断）。
         total_lines:   公告全文总行数。
         total_matches: grep 的全部命中数（截断前）。
-        head_limit:    本次展示的上限。
         before:        命中前上下文行数（用于区间合并）。
         after:         命中后上下文行数（用于区间合并）。
         all_lines:     公告全文行列表（用于区间合并时补全行内容）。
@@ -292,13 +290,11 @@ async def grep_announcement(
     total_matches = len(matches)
     before = before_context if before_context is not None else context_lines
     after = after_context if after_context is not None else context_lines
-    cache_path = _get_cache()._get_cache_path(info.announcement_id)  # pyright: ignore[reportPrivateUsage]  # design decision: avoid adding public API for this one-off read
-    all_lines: list[str] = cache_path.read_text(encoding="utf-8").splitlines()
+    all_lines = _get_cache().get_all_lines(info.announcement_id)
     return _format_grep_results(
         matches[:head_limit],
         total_lines,
         total_matches,
-        head_limit,
         before,
         after,
         all_lines,
