@@ -121,6 +121,7 @@ class AnnouncementCache:
 
         lines = path.read_text(encoding="utf-8").splitlines()
         total = len(lines)
+        limit = min(limit, 500)
         start = max(0, offset - 1)
         end = min(len(lines), start + limit)
         selected = lines[start:end]

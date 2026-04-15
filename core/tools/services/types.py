@@ -50,7 +50,7 @@ class ReadInput(BaseModel):
     """读取公告全文的输入参数。"""
     announcement_id: str = Field(description="公告 ID")
     offset: int = Field(default=1, description="起始行号")
-    limit: int = Field(default=200, description="读取行数限制")
+    limit: int = Field(default=200, description="读取行数限制，最大 500")
 
 # ── 业务数据类 ─────────────────────────────────
 
