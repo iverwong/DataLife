@@ -167,7 +167,7 @@ def _format_grep_results(
     matches: list[GrepMatch],
     total_lines: int,
     total_matches: int,
-    head_limit: int,
+    head_limit: int,  # pyright: ignore[reportUnusedParameter]  # truncation happens at caller
     before: int,
     after: int,
     all_lines: list[str],
@@ -292,7 +292,7 @@ async def grep_announcement(
     total_matches = len(matches)
     before = before_context if before_context is not None else context_lines
     after = after_context if after_context is not None else context_lines
-    cache_path = _get_cache()._get_cache_path(info.announcement_id)
+    cache_path = _get_cache()._get_cache_path(info.announcement_id)  # pyright: ignore[reportPrivateUsage]  # design decision: avoid adding public API for this one-off read
     all_lines: list[str] = cache_path.read_text(encoding="utf-8").splitlines()
     return _format_grep_results(
         matches[:head_limit],
