@@ -183,7 +183,24 @@ def _format_grep_results(
         after:         命中后上下文行数（用于区间合并）。
         all_lines:     公告全文行列表（用于区间合并时补全行内容）。
     """
-    raise NotImplementedError
+    if not matches:
+        return "未找到匹配内容"
+
+    intervals = _build_merged_intervals(matches, before, after, all_lines)
+    parts: list[str] = []
+    for interval in intervals:
+        rows: list[str] = []
+        for i, line_text in enumerate(interval.lines):
+            ln = interval.start_line + i
+            prefix = ">>>" if ln in interval.match_lines else "   "
+            rows.append(f"{prefix} L{ln}: {line_text}")
+        parts.append("--- match ---\n" + "\n".join(rows))
+
+    body = "\n\n".join(parts)
+    summary = f"共 {total_matches} 条匹配"
+    if len(matches) < total_matches:
+        summary += f"，显示前 {len(matches)} 条"
+    return f"{summary}\n\n{body}\n\n（全文共 {total_lines} 行）"
 
 
 # 用户友好名称 → 巨潮 API category 代码
@@ -275,7 +292,8 @@ async def grep_announcement(
     total_matches = len(matches)
     before = before_context if before_context is not None else context_lines
     after = after_context if after_context is not None else context_lines
-    all_lines: list[str] = []  # TODO: 从缓存获取全文
+    cache_path = _get_cache()._get_cache_path(info.announcement_id)
+    all_lines: list[str] = cache_path.read_text(encoding="utf-8").splitlines()
     return _format_grep_results(
         matches[:head_limit],
         total_lines,

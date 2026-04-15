@@ -293,6 +293,17 @@ class TestGrepAnnouncement:
             mock_cache.get_total_lines = MagicMock(
                 return_value=500
             )
+            mock_path = MagicMock()
+            mock_path.read_text = MagicMock(
+                return_value=(
+                    "line0\n" * 9
+                    + "营业收入 1850 亿元\n"
+                    + "line11\n" * 31
+                    + "营业收入构成分析\n"
+                    + "line43\n" * 458
+                )
+            )
+            mock_cache._get_cache_path = MagicMock(return_value=mock_path)
             from core.tools.announcement import (
                 grep_announcement,
             )
