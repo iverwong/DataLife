@@ -20,8 +20,8 @@ CategoryName = Literal[
 
 class SearchInput(BaseModel):
     """搜索公告的输入参数。"""
-    keyword: str = Field(description="搜索关键词")
-    stock_code: str = Field(description="股票代码（如 600519）")
+    keyword: str = Field(default="", description="搜索关键词")
+    stock_code: str = Field(default="", description="股票代码（如 600519）")
     category: list[CategoryName] | None = Field(
         default=None,
         description="公告类型筛选列表，传入 None 则不限类型",
